@@ -1,257 +1,390 @@
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { gql } from '../lib/api'
+
+const route = useRoute()
+const userId = computed(() => route.params.userId)
+const user = ref(null)
+const loading = ref(true)
+const error = ref('')
+const activeTab = ref('overview')
+
+const tabs = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'messages', label: 'Messages' },
+  { id: 'voice', label: 'Voice' },
+  { id: 'activities', label: 'Activities' },
+  { id: 'presence', label: 'Presence' },
+  { id: 'statuses', label: 'Statuses' },
+]
+
+async function fetchUser() {
+  loading.value = true
+  error.value = ''
+  try {
+    const data = await gql(`
+      query User($userId: String!) {
+        user(userId: $userId) {
+          userId
+          firstSeen
+          currentName {
+            username
+            displayName
+            globalName
+          }
+          stats {
+            totalMessages
+            totalVoiceTimeMinutes
+            totalActivities
+            mostActiveHour
+            favoriteActivity
+            mostUsedChannel
+          }
+          nameHistory(limit: 10) {
+            username
+            displayName
+            globalName
+            effectiveFrom
+            effectiveUntil
+          }
+          messages(limit: 50) {
+            messageId
+            channelId
+            messageType
+            hasAttachments
+            hasEmbeds
+            characterCount
+            sentAt
+          }
+          voiceSessions(limit: 50) {
+            id
+            channelId
+            joinedAt
+            leftAt
+            durationMinutes
+            isOngoing
+          }
+          activities(limit: 50) {
+            id
+            activityType
+            activityName
+            startedAt
+            endedAt
+            durationMinutes
+            isOngoing
+          }
+          presenceStatus(limit: 50) {
+            id
+            statusType
+            setAt
+            changedAt
+            durationMinutes
+            isCurrent
+          }
+          customStatuses(limit: 50) {
+            id
+            statusText
+            emoji
+            setAt
+          }
+        }
+      }
+    `, { userId: userId.value })
+    user.value = data.user
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
+}
+
+function displayName(u) {
+  const n = u.currentName
+  if (!n) return u.userId
+  return n.globalName || n.displayName || n.username || u.userId
+}
+
+function formatDate(str) {
+  if (!str) return '—'
+  return new Date(str).toLocaleString()
+}
+
+function formatDateShort(str) {
+  if (!str) return '—'
+  return new Date(str).toLocaleDateString()
+}
+
+function formatDuration(mins) {
+  if (mins == null) return 'Ongoing'
+  if (mins < 60) return `${mins}m`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+const statusColors = {
+  ONLINE: 'text-green-400',
+  IDLE: 'text-yellow-400',
+  DND: 'text-red-400',
+  OFFLINE: 'text-gray-500',
+  STREAMING: 'text-purple-400',
+}
+
+onMounted(fetchUser)
+</script>
+
 <template>
-  <div class="min-h-screen bg-slate-50 dark:bg-slate-900">
-    <nav class="bg-white dark:bg-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-700">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center h-16">
-          <div class="flex items-center space-x-8">
-            <h1 class="text-xl font-bold text-slate-900 dark:text-white">FBI Bot Dashboard</h1>
-            <div class="hidden md:flex space-x-4">
-              <router-link
-                to="/"
-                class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
-              >
-                Dashboard
-              </router-link>
-              <router-link
-                to="/users"
-                class="px-3 py-2 rounded-md text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
-              >
-                Users
-              </router-link>
-            </div>
-          </div>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <router-link to="/users" class="text-sm text-gray-400 hover:text-white mb-4 inline-block">
+      &larr; Back to Users
+    </router-link>
+
+    <div v-if="loading" class="text-gray-500 py-8">Loading...</div>
+    <p v-else-if="error" class="text-red-400">{{ error }}</p>
+    <div v-else-if="!user" class="text-gray-500 py-8">User not found</div>
+
+    <template v-else>
+      <div class="mb-8">
+        <h1 class="text-2xl font-bold">{{ displayName(user) }}</h1>
+        <div class="flex gap-4 mt-2 text-sm text-gray-400">
+          <span v-if="user.currentName?.username">@{{ user.currentName.username }}</span>
+          <span class="font-mono">{{ user.userId }}</span>
+          <span>First seen {{ formatDateShort(user.firstSeen) }}</span>
+        </div>
+      </div>
+
+      <div class="border-b border-gray-800 mb-6">
+        <div class="flex gap-0">
           <button
-            @click="handleLogout"
-            class="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md"
+            v-for="tab in tabs"
+            :key="tab.id"
+            @click="activeTab = tab.id"
+            class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
+            :class="activeTab === tab.id
+              ? 'border-indigo-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200'"
           >
-            Logout
+            {{ tab.label }}
           </button>
         </div>
       </div>
-    </nav>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <button
-        @click="router.back()"
-        class="mb-6 flex items-center space-x-2 text-sm text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-400"
-      >
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-        </svg>
-        <span>Back to Users</span>
-      </button>
-
-      <div v-if="fetching" class="flex justify-center items-center h-64">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-      </div>
-
-      <div v-else-if="error" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-        <p class="text-red-800 dark:text-red-200">Error loading user: {{ error.message }}</p>
-      </div>
-
-      <div v-else-if="data?.user" class="space-y-6">
-        <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-6">
-          <div class="flex items-center space-x-6">
-            <div class="w-20 h-20 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-3xl">
-              {{ getUserInitials(data.user) }}
-            </div>
-            <div>
-              <h2 class="text-3xl font-bold text-slate-900 dark:text-white">
-                {{ getUserDisplayName(data.user) }}
-              </h2>
-              <p class="text-slate-500 dark:text-slate-400 mt-1">ID: {{ data.user.userId }}</p>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                Member since {{ formatDate(data.user.firstSeen) }}
-              </p>
-            </div>
+      <!-- Overview -->
+      <div v-if="activeTab === 'overview'">
+        <div v-if="user.stats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p class="text-sm text-gray-400 mb-1">Messages</p>
+            <p class="text-2xl font-bold">{{ user.stats.totalMessages.toLocaleString() }}</p>
+          </div>
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p class="text-sm text-gray-400 mb-1">Voice Time</p>
+            <p class="text-2xl font-bold">{{ formatDuration(user.stats.totalVoiceTimeMinutes) }}</p>
+          </div>
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p class="text-sm text-gray-400 mb-1">Activities</p>
+            <p class="text-2xl font-bold">{{ user.stats.totalActivities.toLocaleString() }}</p>
+          </div>
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p class="text-sm text-gray-400 mb-1">Most Active Hour</p>
+            <p class="text-2xl font-bold">{{ user.stats.mostActiveHour != null ? `${user.stats.mostActiveHour}:00` : '—' }}</p>
+          </div>
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p class="text-sm text-gray-400 mb-1">Favorite Activity</p>
+            <p class="text-xl font-semibold truncate">{{ user.stats.favoriteActivity || '—' }}</p>
+          </div>
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <p class="text-sm text-gray-400 mb-1">Top Channel</p>
+            <p class="text-xl font-semibold font-mono truncate">{{ user.stats.mostUsedChannel || '—' }}</p>
           </div>
         </div>
 
-        <div>
-          <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-4">Activity Stats (Last 30 Days)</h3>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard
-              title="Messages Sent"
-              :value="data.user.stats?.totalMessages || 0"
-              icon="💬"
-            />
-            <StatCard
-              title="Voice Time"
-              :value="`${Math.round((data.user.stats?.totalVoiceTimeMinutes || 0) / 60)}h`"
-              icon="🎤"
-            />
-            <StatCard
-              title="Activities"
-              :value="data.user.stats?.totalActivities || 0"
-              icon="🎮"
-            />
-          </div>
-        </div>
-
-        <div>
-          <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-4">Recent Activities</h3>
-          <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div class="divide-y divide-slate-200 dark:divide-slate-700">
-              <div
-                v-for="activity in data.user.activities"
-                :key="activity.id"
-                class="p-4"
-              >
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center space-x-3">
-                    <span class="text-2xl">{{ getActivityIcon(activity.activityType) }}</span>
-                    <div>
-                      <p class="text-sm font-medium text-slate-900 dark:text-white">{{ activity.activityName }}</p>
-                      <p class="text-xs text-slate-500 dark:text-slate-400 capitalize">{{ activity.activityType }}</p>
-                    </div>
-                  </div>
-                  <div class="text-right">
-                    <p class="text-xs text-slate-500 dark:text-slate-400">
-                      {{ formatDate(activity.startedAt) }}
-                    </p>
-                    <p v-if="activity.durationMinutes" class="text-xs text-slate-500 dark:text-slate-400">
-                      {{ formatDuration(activity.durationMinutes) }}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div v-if="!data.user.activities?.length" class="p-8 text-center text-slate-500 dark:text-slate-400">
-                No recent activities
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-4">Recent Voice Sessions</h3>
-          <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div class="divide-y divide-slate-200 dark:divide-slate-700">
-              <div
-                v-for="session in data.user.voiceSessions"
-                :key="session.id"
-                class="p-4"
-              >
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="text-sm font-medium text-slate-900 dark:text-white">Channel {{ session.channelId }}</p>
-                    <p class="text-xs text-slate-500 dark:text-slate-400">
-                      Joined {{ formatDate(session.joinedAt) }}
-                    </p>
-                  </div>
-                  <div class="text-right">
-                    <p class="text-sm font-semibold text-purple-600 dark:text-purple-400">
-                      {{ formatDuration(session.durationMinutes || 0) }}
-                    </p>
-                    <p v-if="!session.leftAt" class="text-xs text-green-600 dark:text-green-400">
-                      Currently active
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div v-if="!data.user.voiceSessions?.length" class="p-8 text-center text-slate-500 dark:text-slate-400">
-                No recent voice sessions
-              </div>
-            </div>
-          </div>
+        <h2 class="text-lg font-semibold mb-3">Name History</h2>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left text-gray-400">
+                <th class="px-4 py-2.5 font-medium">Username</th>
+                <th class="px-4 py-2.5 font-medium">Display Name</th>
+                <th class="px-4 py-2.5 font-medium">Global Name</th>
+                <th class="px-4 py-2.5 font-medium">From</th>
+                <th class="px-4 py-2.5 font-medium">Until</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(name, i) in user.nameHistory" :key="i" class="border-b border-gray-800/50">
+                <td class="px-4 py-2.5">{{ name.username }}</td>
+                <td class="px-4 py-2.5 text-gray-400">{{ name.displayName || '—' }}</td>
+                <td class="px-4 py-2.5 text-gray-400">{{ name.globalName || '—' }}</td>
+                <td class="px-4 py-2.5 text-gray-500">{{ formatDateShort(name.effectiveFrom) }}</td>
+                <td class="px-4 py-2.5 text-gray-500">
+                  {{ name.effectiveUntil ? formatDateShort(name.effectiveUntil) : 'Current' }}
+                </td>
+              </tr>
+              <tr v-if="!user.nameHistory.length">
+                <td colspan="5" class="px-4 py-6 text-center text-gray-500">No name history</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <div v-else class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-        <p class="text-yellow-800 dark:text-yellow-200">User not found</p>
+      <!-- Messages -->
+      <div v-if="activeTab === 'messages'">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left text-gray-400">
+                <th class="px-4 py-2.5 font-medium">Channel</th>
+                <th class="px-4 py-2.5 font-medium">Type</th>
+                <th class="px-4 py-2.5 font-medium">Chars</th>
+                <th class="px-4 py-2.5 font-medium">Extras</th>
+                <th class="px-4 py-2.5 font-medium">Sent</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="msg in user.messages" :key="msg.messageId" class="border-b border-gray-800/50">
+                <td class="px-4 py-2.5 font-mono text-xs text-gray-400">{{ msg.channelId }}</td>
+                <td class="px-4 py-2.5 capitalize">{{ msg.messageType.toLowerCase().replace('_', ' ') }}</td>
+                <td class="px-4 py-2.5 text-gray-400">{{ msg.characterCount ?? '—' }}</td>
+                <td class="px-4 py-2.5">
+                  <span v-if="msg.hasAttachments" class="text-indigo-400 text-xs mr-1">Files</span>
+                  <span v-if="msg.hasEmbeds" class="text-purple-400 text-xs">Embeds</span>
+                  <span v-if="!msg.hasAttachments && !msg.hasEmbeds" class="text-gray-600">—</span>
+                </td>
+                <td class="px-4 py-2.5 text-gray-500">{{ formatDate(msg.sentAt) }}</td>
+              </tr>
+              <tr v-if="!user.messages.length">
+                <td colspan="5" class="px-4 py-6 text-center text-gray-500">No messages</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </main>
+
+      <!-- Voice -->
+      <div v-if="activeTab === 'voice'">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left text-gray-400">
+                <th class="px-4 py-2.5 font-medium">Channel</th>
+                <th class="px-4 py-2.5 font-medium">Joined</th>
+                <th class="px-4 py-2.5 font-medium">Left</th>
+                <th class="px-4 py-2.5 font-medium">Duration</th>
+                <th class="px-4 py-2.5 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="vs in user.voiceSessions" :key="vs.id" class="border-b border-gray-800/50">
+                <td class="px-4 py-2.5 font-mono text-xs text-gray-400">{{ vs.channelId }}</td>
+                <td class="px-4 py-2.5 text-gray-400">{{ formatDate(vs.joinedAt) }}</td>
+                <td class="px-4 py-2.5 text-gray-400">{{ vs.leftAt ? formatDate(vs.leftAt) : '—' }}</td>
+                <td class="px-4 py-2.5">{{ formatDuration(vs.durationMinutes) }}</td>
+                <td class="px-4 py-2.5">
+                  <span
+                    v-if="vs.isOngoing"
+                    class="text-green-400 text-xs font-medium px-2 py-0.5 bg-green-400/10 rounded-full"
+                  >Live</span>
+                </td>
+              </tr>
+              <tr v-if="!user.voiceSessions.length">
+                <td colspan="5" class="px-4 py-6 text-center text-gray-500">No voice sessions</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Activities -->
+      <div v-if="activeTab === 'activities'">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left text-gray-400">
+                <th class="px-4 py-2.5 font-medium">Activity</th>
+                <th class="px-4 py-2.5 font-medium">Type</th>
+                <th class="px-4 py-2.5 font-medium">Started</th>
+                <th class="px-4 py-2.5 font-medium">Duration</th>
+                <th class="px-4 py-2.5 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="act in user.activities" :key="act.id" class="border-b border-gray-800/50">
+                <td class="px-4 py-2.5 font-medium">{{ act.activityName }}</td>
+                <td class="px-4 py-2.5 text-gray-400 capitalize">{{ act.activityType.toLowerCase() }}</td>
+                <td class="px-4 py-2.5 text-gray-500">{{ formatDate(act.startedAt) }}</td>
+                <td class="px-4 py-2.5">{{ formatDuration(act.durationMinutes) }}</td>
+                <td class="px-4 py-2.5">
+                  <span
+                    v-if="act.isOngoing"
+                    class="text-green-400 text-xs font-medium px-2 py-0.5 bg-green-400/10 rounded-full"
+                  >Live</span>
+                </td>
+              </tr>
+              <tr v-if="!user.activities.length">
+                <td colspan="5" class="px-4 py-6 text-center text-gray-500">No activities</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Presence -->
+      <div v-if="activeTab === 'presence'">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left text-gray-400">
+                <th class="px-4 py-2.5 font-medium">Status</th>
+                <th class="px-4 py-2.5 font-medium">Since</th>
+                <th class="px-4 py-2.5 font-medium">Until</th>
+                <th class="px-4 py-2.5 font-medium">Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="ps in user.presenceStatus" :key="ps.id" class="border-b border-gray-800/50">
+                <td class="px-4 py-2.5 font-medium" :class="statusColors[ps.statusType] || 'text-gray-400'">
+                  {{ ps.statusType }}
+                </td>
+                <td class="px-4 py-2.5 text-gray-400">{{ formatDate(ps.setAt) }}</td>
+                <td class="px-4 py-2.5 text-gray-400">{{ ps.changedAt ? formatDate(ps.changedAt) : '—' }}</td>
+                <td class="px-4 py-2.5">
+                  {{ ps.isCurrent ? 'Current' : formatDuration(ps.durationMinutes) }}
+                </td>
+              </tr>
+              <tr v-if="!user.presenceStatus.length">
+                <td colspan="4" class="px-4 py-6 text-center text-gray-500">No presence data</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Custom Statuses -->
+      <div v-if="activeTab === 'statuses'">
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left text-gray-400">
+                <th class="px-4 py-2.5 font-medium">Emoji</th>
+                <th class="px-4 py-2.5 font-medium">Text</th>
+                <th class="px-4 py-2.5 font-medium">Set At</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="cs in user.customStatuses" :key="cs.id" class="border-b border-gray-800/50">
+                <td class="px-4 py-2.5 text-xl">{{ cs.emoji || '—' }}</td>
+                <td class="px-4 py-2.5">{{ cs.statusText || '—' }}</td>
+                <td class="px-4 py-2.5 text-gray-500">{{ formatDate(cs.setAt) }}</td>
+              </tr>
+              <tr v-if="!user.customStatuses.length">
+                <td colspan="3" class="px-4 py-6 text-center text-gray-500">No custom statuses</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
-
-<script setup lang="ts">
-import { computed } from 'vue'
-import { useQuery } from '@urql/vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import StatCard from '@/components/StatCard.vue'
-import type { User, ActivityType } from '@/types/discord'
-
-const router = useRouter()
-const route = useRoute()
-const authStore = useAuthStore()
-
-const userId = computed(() => route.params.userId as string)
-
-const { data, fetching, error } = useQuery({
-  query: `
-    query GetUser($userId: String!) {
-      user(userId: $userId) {
-        userId
-        firstSeen
-        currentName {
-          username
-          displayName
-          globalName
-        }
-        stats(days: 30) {
-          totalMessages
-          totalVoiceTimeMinutes
-          totalActivities
-          mostActiveHour
-          favoriteActivity
-        }
-        activities(limit: 10) {
-          id
-          activityType
-          activityName
-          startedAt
-          endedAt
-          durationMinutes
-        }
-        voiceSessions(limit: 10) {
-          id
-          channelId
-          joinedAt
-          leftAt
-          durationMinutes
-        }
-      }
-    }
-  `,
-  variables: userId,
-})
-
-const getUserDisplayName = (user: User): string => {
-  if (!user.currentName) return `User ${user.userId}`
-  return user.currentName.displayName || user.currentName.globalName || user.currentName.username || `User ${user.userId}`
-}
-
-const getUserInitials = (user: User): string => {
-  const name = getUserDisplayName(user)
-  if (name.startsWith('User ')) return name.slice(-2).toUpperCase()
-  return name.slice(0, 2).toUpperCase()
-}
-
-const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString()
-}
-
-const formatDuration = (minutes: number): string => {
-  if (minutes < 60) return `${Math.round(minutes)}m`
-  const hours = Math.floor(minutes / 60)
-  const mins = Math.round(minutes % 60)
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
-}
-
-const getActivityIcon = (activityType: ActivityType): string => {
-  const icons: Record<ActivityType, string> = {
-    playing: '🎮',
-    streaming: '📺',
-    listening: '🎵',
-    watching: '👀',
-    competing: '🏆',
-    custom: '✨',
-  }
-  return icons[activityType] || '🎮'
-}
-
-const handleLogout = () => {
-  authStore.logout()
-  router.push({ name: 'login' })
-}
-</script>
