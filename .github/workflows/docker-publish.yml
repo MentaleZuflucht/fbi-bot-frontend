@@ -55,11 +55,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-          build-args: |
-            BACKEND_API_URL=${{ secrets.BACKEND_API_URL }}
-            BACKEND_API_KEY=${{ secrets.BACKEND_API_KEY }}
-            FRONTEND_PASSWORD=${{ secrets.FRONTEND_PASSWORD }}
 
       - name: Image digest
         run: echo "${{ steps.meta.outputs.tags }}"
