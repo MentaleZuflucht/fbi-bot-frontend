@@ -6,6 +6,9 @@ services:
     image: ghcr.io/mentalezuflucht/fbi-bot-frontend:main
     pull_policy: always
     
+    environment:
+      - API_URL=${API_IP}
+    
     networks:
       br0:
         ipv4_address: ${FRONTEND_IP}
