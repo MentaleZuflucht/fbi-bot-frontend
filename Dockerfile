@@ -5,25 +5,27 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci --legacy-peer-deps
+RUN npm ci
 
 COPY . .
 
-ENV VITE_APP_PASSWORD=${VITE_API_PASSWORD} \
-    VITE_API_URL=${VITE_API_URL} \
-    VITE_API_KEY=${VITE_API_KEY}
+ARG FRONTEND_PASSWORD
+ARG BACKEND_API_URL
+ARG BACKEND_API_KEY
+
+ENV FRONTEND_PASSWORD=${FRONTEND_PASSWORD} \
+    BACKEND_API_URL=${BACKEND_API_URL} \
+    BACKEND_API_KEY=${BACKEND_API_KEY}
 
 RUN npm run build
 
+# Production stage
 FROM nginx:alpine
-
-COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
 
