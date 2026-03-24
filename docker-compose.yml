@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: ghcr.io/mentalezuflucht/fbi-bot-frontend:main
+    container_name: fbi-bot-frontend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    environment:
+      - VITE_APP_PASSWORD=${VITE_APP_PASSWORD}
+      - VITE_API_URL=${VITE_API_URL}
+      - VITE_API_KEY=${VITE_API_KEY}
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
