@@ -7,7 +7,7 @@ services:
     pull_policy: always
     
     environment:
-      - API_URL=${API_IP}
+      - API_URL=${API_URL}
     
     networks:
       br0:
