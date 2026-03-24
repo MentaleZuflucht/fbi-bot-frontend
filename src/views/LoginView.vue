@@ -60,7 +60,7 @@ const handleLogin = async () => {
   loading.value = true
 
   try {
-    const success = authStore.checkPassword(password.value)
+    const success = await authStore.login(password.value)
     
     if (success) {
       await router.push({ name: 'dashboard' })
@@ -68,6 +68,9 @@ const handleLogin = async () => {
       error.value = 'Invalid password'
       password.value = ''
     }
+  } catch (err) {
+    error.value = 'Connection error. Please try again.'
+    console.error('Login error:', err)
   } finally {
     loading.value = false
   }

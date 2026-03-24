@@ -7,9 +7,7 @@ services:
     pull_policy: always
     
     environment:
-      - VITE_APP_PASSWORD=${VITE_APP_PASSWORD}
       - VITE_API_URL=${VITE_API_URL}
-      - VITE_API_KEY=${VITE_API_KEY}
     
     networks:
       br0:
