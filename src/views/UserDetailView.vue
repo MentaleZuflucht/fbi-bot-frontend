@@ -173,11 +173,12 @@ async function fetchStats() {
       }
     `, { days, userId: userId.value })
     statsData.value = data
+    statsLoading.value = false
+
     await nextTick()
     renderCharts()
   } catch (e) {
     error.value = e.message
-  } finally {
     statsLoading.value = false
   }
 }
@@ -375,6 +376,8 @@ onMounted(fetchUser)
             @change="fetchStats"
             class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
+            <option value="1">24 hours</option>
+            <option value="3">3 days</option>
             <option value="7">7 days</option>
             <option value="14">14 days</option>
             <option value="30">30 days</option>
@@ -436,7 +439,10 @@ onMounted(fetchUser)
             @change="fetchMessages"
             class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
+            <option value="1">24 hours</option>
+            <option value="3">3 days</option>
             <option value="7">7 days</option>
+            <option value="14">14 days</option>
             <option value="30">30 days</option>
             <option value="90">90 days</option>
             <option value="">All time</option>
@@ -491,7 +497,10 @@ onMounted(fetchUser)
             @change="fetchVoice"
             class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
+            <option value="1">24 hours</option>
+            <option value="3">3 days</option>
             <option value="7">7 days</option>
+            <option value="14">14 days</option>
             <option value="30">30 days</option>
             <option value="90">90 days</option>
             <option value="">All time</option>

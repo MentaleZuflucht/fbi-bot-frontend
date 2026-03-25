@@ -56,12 +56,12 @@ async function fetchAll() {
     hourlyData.value = data.hourlyMessageDistribution
     topChannels.value = data.topChannels
     topActivities.value = data.topActivities
+    loading.value = false
 
     await nextTick()
     renderCharts()
   } catch (e) {
     error.value = e.message
-  } finally {
     loading.value = false
   }
 }
@@ -208,6 +208,8 @@ onMounted(fetchAll)
           @change="fetchAll"
           class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
+          <option value="1">24 hours</option>
+          <option value="3">3 days</option>
           <option value="7">7 days</option>
           <option value="14">14 days</option>
           <option value="30">30 days</option>
