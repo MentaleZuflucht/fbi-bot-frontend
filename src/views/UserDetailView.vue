@@ -1,7 +1,10 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { gql } from '../lib/api'
+import { Chart, registerables } from 'chart.js'
+
+Chart.register(...registerables)
 
 const route = useRoute()
 const userId = computed(() => route.params.userId)
@@ -12,12 +15,34 @@ const activeTab = ref('overview')
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
+  { id: 'statistics', label: 'Statistics' },
   { id: 'messages', label: 'Messages' },
   { id: 'voice', label: 'Voice' },
   { id: 'activities', label: 'Activities' },
   { id: 'presence', label: 'Presence' },
   { id: 'statuses', label: 'Statuses' },
 ]
+
+// --- Filters ---
+const msgDays = ref('30')
+const msgChannel = ref('')
+const voiceDays = ref('30')
+const voiceChannel = ref('')
+
+// --- Lazy-loaded tab data ---
+const messages = ref([])
+const messagesLoading = ref(false)
+const voiceSessions = ref([])
+const voiceLoading = ref(false)
+
+// --- Stats tab ---
+const statsDays = ref('30')
+const statsData = ref(null)
+const statsLoading = ref(false)
+const dailyChart = ref(null)
+const hourlyChart = ref(null)
+let dailyChartInstance = null
+let hourlyChartInstance = null
 
 async function fetchUser() {
   loading.value = true
@@ -47,23 +72,6 @@ async function fetchUser() {
             globalName
             effectiveFrom
             effectiveUntil
-          }
-          messages(limit: 50) {
-            messageId
-            channelId
-            messageType
-            hasAttachments
-            hasEmbeds
-            characterCount
-            sentAt
-          }
-          voiceSessions(limit: 50) {
-            id
-            channelId
-            joinedAt
-            leftAt
-            durationMinutes
-            isOngoing
           }
           activities(limit: 50) {
             id
@@ -98,6 +106,135 @@ async function fetchUser() {
     loading.value = false
   }
 }
+
+async function fetchMessages() {
+  messagesLoading.value = true
+  try {
+    const vars = { userId: userId.value, limit: 100 }
+    if (msgDays.value) vars.days = parseInt(msgDays.value)
+    if (msgChannel.value.trim()) vars.channelId = msgChannel.value.trim()
+    const data = await gql(`
+      query Messages($userId: String, $limit: Int, $days: Int, $channelId: String) {
+        messages(userId: $userId, limit: $limit, days: $days, channelId: $channelId) {
+          messageId
+          channelId
+          messageType
+          hasAttachments
+          hasEmbeds
+          characterCount
+          sentAt
+        }
+      }
+    `, vars)
+    messages.value = data.messages
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    messagesLoading.value = false
+  }
+}
+
+async function fetchVoice() {
+  voiceLoading.value = true
+  try {
+    const vars = { userId: userId.value, limit: 100 }
+    if (voiceDays.value) vars.days = parseInt(voiceDays.value)
+    if (voiceChannel.value.trim()) vars.channelId = voiceChannel.value.trim()
+    const data = await gql(`
+      query VoiceSessions($userId: String, $limit: Int, $days: Int, $channelId: String) {
+        voiceSessions(userId: $userId, limit: $limit, days: $days, channelId: $channelId) {
+          id
+          channelId
+          joinedAt
+          leftAt
+          durationMinutes
+          isOngoing
+        }
+      }
+    `, vars)
+    voiceSessions.value = data.voiceSessions
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    voiceLoading.value = false
+  }
+}
+
+async function fetchStats() {
+  statsLoading.value = true
+  try {
+    const days = statsDays.value ? parseInt(statsDays.value) : null
+    const data = await gql(`
+      query UserCharts($days: Int, $userId: String) {
+        dailyStats(days: $days, userId: $userId) { date messageCount voiceHours activityCount }
+        hourlyMessageDistribution(days: $days, userId: $userId) { hour count }
+        topChannels(days: $days, userId: $userId, limit: 8) { name count }
+        topActivities(days: $days, userId: $userId, limit: 8) { name count }
+      }
+    `, { days, userId: userId.value })
+    statsData.value = data
+    await nextTick()
+    renderCharts()
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    statsLoading.value = false
+  }
+}
+
+function renderCharts() {
+  if (dailyChartInstance) dailyChartInstance.destroy()
+  if (hourlyChartInstance) hourlyChartInstance.destroy()
+
+  const d = statsData.value
+  if (!d) return
+
+  if (dailyChart.value) {
+    dailyChartInstance = new Chart(dailyChart.value, {
+      type: 'bar',
+      data: {
+        labels: d.dailyStats.map(s => s.date),
+        datasets: [
+          { label: 'Messages', data: d.dailyStats.map(s => s.messageCount), backgroundColor: 'rgba(99,102,241,0.7)', borderRadius: 3, order: 1 },
+          { label: 'Voice Hours', data: d.dailyStats.map(s => s.voiceHours), backgroundColor: 'rgba(168,85,247,0.7)', borderRadius: 3, order: 2 },
+        ],
+      },
+      options: chartOptions('Daily Activity'),
+    })
+  }
+
+  if (hourlyChart.value) {
+    hourlyChartInstance = new Chart(hourlyChart.value, {
+      type: 'bar',
+      data: {
+        labels: d.hourlyMessageDistribution.map(h => `${h.hour}:00`),
+        datasets: [{ label: 'Messages', data: d.hourlyMessageDistribution.map(h => h.count), backgroundColor: 'rgba(99,102,241,0.7)', borderRadius: 3 }],
+      },
+      options: chartOptions('Messages by Hour'),
+    })
+  }
+}
+
+function chartOptions(title) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: '#9ca3af' } },
+      title: { display: true, text: title, color: '#e5e7eb' },
+    },
+    scales: {
+      x: { ticks: { color: '#6b7280', maxRotation: 45 }, grid: { color: 'rgba(55,65,81,0.5)' } },
+      y: { ticks: { color: '#6b7280' }, grid: { color: 'rgba(55,65,81,0.5)' }, beginAtZero: true },
+    },
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'messages' && !messages.value.length && !messagesLoading.value) fetchMessages()
+  if (tab === 'voice' && !voiceSessions.value.length && !voiceLoading.value) fetchVoice()
+  if (tab === 'statistics' && !statsData.value && !statsLoading.value) fetchStats()
+})
 
 function displayName(u) {
   const n = u.currentName
@@ -155,12 +292,12 @@ onMounted(fetchUser)
       </div>
 
       <div class="border-b border-gray-800 mb-6">
-        <div class="flex gap-0">
+        <div class="flex gap-0 overflow-x-auto">
           <button
             v-for="tab in tabs"
             :key="tab.id"
             @click="activeTab = tab.id"
-            class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
+            class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap"
             :class="activeTab === tab.id
               ? 'border-indigo-500 text-white'
               : 'border-transparent text-gray-400 hover:text-gray-200'"
@@ -229,9 +366,93 @@ onMounted(fetchUser)
         </div>
       </div>
 
+      <!-- Statistics -->
+      <div v-if="activeTab === 'statistics'">
+        <div class="flex items-center gap-3 mb-6">
+          <label class="text-sm text-gray-400">Period:</label>
+          <select
+            v-model="statsDays"
+            @change="fetchStats"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+            <option value="180">6 months</option>
+            <option value="365">1 year</option>
+            <option value="">All time</option>
+          </select>
+        </div>
+
+        <div v-if="statsLoading" class="text-gray-500 py-8">Loading charts...</div>
+        <template v-else-if="statsData">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 h-72">
+              <canvas ref="dailyChart"></canvas>
+            </div>
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 h-72">
+              <canvas ref="hourlyChart"></canvas>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <h3 class="text-sm font-semibold text-gray-300 mb-3">Top Channels</h3>
+              <div v-if="!statsData.topChannels.length" class="text-gray-500 text-sm">No data</div>
+              <div v-for="ch in statsData.topChannels" :key="ch.name" class="flex items-center justify-between py-1.5">
+                <span class="font-mono text-sm text-gray-400 truncate mr-3">{{ ch.name }}</span>
+                <div class="flex items-center gap-2 shrink-0">
+                  <div class="w-24 bg-gray-800 rounded-full h-2">
+                    <div class="bg-indigo-500 h-2 rounded-full" :style="{ width: (ch.count / statsData.topChannels[0].count * 100) + '%' }"></div>
+                  </div>
+                  <span class="text-sm text-gray-400 w-12 text-right">{{ ch.count }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <h3 class="text-sm font-semibold text-gray-300 mb-3">Top Activities</h3>
+              <div v-if="!statsData.topActivities.length" class="text-gray-500 text-sm">No data</div>
+              <div v-for="act in statsData.topActivities" :key="act.name" class="flex items-center justify-between py-1.5">
+                <span class="text-sm truncate mr-3">{{ act.name }}</span>
+                <div class="flex items-center gap-2 shrink-0">
+                  <div class="w-24 bg-gray-800 rounded-full h-2">
+                    <div class="bg-purple-500 h-2 rounded-full" :style="{ width: (act.count / statsData.topActivities[0].count * 100) + '%' }"></div>
+                  </div>
+                  <span class="text-sm text-gray-400 w-12 text-right">{{ act.count }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
       <!-- Messages -->
       <div v-if="activeTab === 'messages'">
-        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <select
+            v-model="msgDays"
+            @change="fetchMessages"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+            <option value="">All time</option>
+          </select>
+          <input
+            v-model="msgChannel"
+            @keyup.enter="fetchMessages"
+            type="text"
+            placeholder="Channel ID filter..."
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <button @click="fetchMessages" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm transition-colors">Apply</button>
+        </div>
+
+        <div v-if="messagesLoading" class="text-gray-500 py-4">Loading...</div>
+        <div v-else class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-gray-800 text-left text-gray-400">
@@ -243,7 +464,7 @@ onMounted(fetchUser)
               </tr>
             </thead>
             <tbody>
-              <tr v-for="msg in user.messages" :key="msg.messageId" class="border-b border-gray-800/50">
+              <tr v-for="msg in messages" :key="msg.messageId" class="border-b border-gray-800/50">
                 <td class="px-4 py-2.5 font-mono text-xs text-gray-400">{{ msg.channelId }}</td>
                 <td class="px-4 py-2.5 capitalize">{{ msg.messageType.toLowerCase().replace('_', ' ') }}</td>
                 <td class="px-4 py-2.5 text-gray-400">{{ msg.characterCount ?? '—' }}</td>
@@ -254,7 +475,7 @@ onMounted(fetchUser)
                 </td>
                 <td class="px-4 py-2.5 text-gray-500">{{ formatDate(msg.sentAt) }}</td>
               </tr>
-              <tr v-if="!user.messages.length">
+              <tr v-if="!messages.length">
                 <td colspan="5" class="px-4 py-6 text-center text-gray-500">No messages</td>
               </tr>
             </tbody>
@@ -264,7 +485,29 @@ onMounted(fetchUser)
 
       <!-- Voice -->
       <div v-if="activeTab === 'voice'">
-        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <select
+            v-model="voiceDays"
+            @change="fetchVoice"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+            <option value="">All time</option>
+          </select>
+          <input
+            v-model="voiceChannel"
+            @keyup.enter="fetchVoice"
+            type="text"
+            placeholder="Channel ID filter..."
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <button @click="fetchVoice" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm transition-colors">Apply</button>
+        </div>
+
+        <div v-if="voiceLoading" class="text-gray-500 py-4">Loading...</div>
+        <div v-else class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-gray-800 text-left text-gray-400">
@@ -276,7 +519,7 @@ onMounted(fetchUser)
               </tr>
             </thead>
             <tbody>
-              <tr v-for="vs in user.voiceSessions" :key="vs.id" class="border-b border-gray-800/50">
+              <tr v-for="vs in voiceSessions" :key="vs.id" class="border-b border-gray-800/50">
                 <td class="px-4 py-2.5 font-mono text-xs text-gray-400">{{ vs.channelId }}</td>
                 <td class="px-4 py-2.5 text-gray-400">{{ formatDate(vs.joinedAt) }}</td>
                 <td class="px-4 py-2.5 text-gray-400">{{ vs.leftAt ? formatDate(vs.leftAt) : '—' }}</td>
@@ -288,7 +531,7 @@ onMounted(fetchUser)
                   >Live</span>
                 </td>
               </tr>
-              <tr v-if="!user.voiceSessions.length">
+              <tr v-if="!voiceSessions.length">
                 <td colspan="5" class="px-4 py-6 text-center text-gray-500">No voice sessions</td>
               </tr>
             </tbody>

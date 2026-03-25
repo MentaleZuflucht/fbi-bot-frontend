@@ -25,6 +25,13 @@ const showNav = computed(() => route.name !== 'login' && isAuthenticated())
                 Dashboard
               </router-link>
               <router-link
+                to="/stats"
+                class="px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                :class="route.name === 'stats' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'"
+              >
+                Statistics
+              </router-link>
+              <router-link
                 to="/users"
                 class="px-3 py-2 rounded-md text-sm font-medium transition-colors"
                 :class="route.name === 'users' || route.name === 'user-detail' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'"

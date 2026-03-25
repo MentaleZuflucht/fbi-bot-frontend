@@ -15,7 +15,6 @@ async function fetchStats() {
     const data = await gql(`
       query ServerStats($days: Int) {
         serverStats(days: $days) {
-          totalUsers
           totalMessages
           totalVoiceTimeHours
           totalActivities
@@ -58,11 +57,7 @@ onMounted(fetchStats)
 
     <div v-if="loading" class="text-gray-500">Loading...</div>
 
-    <div v-else-if="stats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
-        <p class="text-sm text-gray-400 mb-1">Total Users</p>
-        <p class="text-3xl font-bold">{{ stats.totalUsers.toLocaleString() }}</p>
-      </div>
+    <div v-else-if="stats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
         <p class="text-sm text-gray-400 mb-1">Total Messages</p>
         <p class="text-3xl font-bold">{{ stats.totalMessages.toLocaleString() }}</p>
@@ -75,13 +70,13 @@ onMounted(fetchStats)
         <p class="text-sm text-gray-400 mb-1">Activities Logged</p>
         <p class="text-3xl font-bold">{{ stats.totalActivities.toLocaleString() }}</p>
       </div>
-      <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 sm:col-span-2">
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
         <p class="text-sm text-gray-400 mb-1">Most Active Channel</p>
-        <p class="text-xl font-semibold font-mono">{{ stats.mostActiveChannelId || '—' }}</p>
+        <p class="text-xl font-semibold font-mono truncate">{{ stats.mostActiveChannelId || '—' }}</p>
       </div>
-      <div class="bg-gray-900 border border-gray-800 rounded-xl p-6 sm:col-span-2">
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
         <p class="text-sm text-gray-400 mb-1">Most Common Activity</p>
-        <p class="text-xl font-semibold">{{ stats.mostCommonActivity || '—' }}</p>
+        <p class="text-xl font-semibold truncate">{{ stats.mostCommonActivity || '—' }}</p>
       </div>
     </div>
   </div>
