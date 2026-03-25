@@ -11,12 +11,6 @@ const router = createRouter({
     },
     {
       path: '/',
-      name: 'dashboard',
-      component: () => import('../views/DashboardView.vue'),
-      meta: { requiresAuth: true },
-    },
-    {
-      path: '/stats',
       name: 'stats',
       component: () => import('../views/StatsView.vue'),
       meta: { requiresAuth: true },
@@ -41,7 +35,7 @@ router.beforeEach((to) => {
     return { name: 'login' }
   }
   if (to.name === 'login' && isAuthenticated()) {
-    return { name: 'dashboard' }
+    return { name: 'stats' }
   }
 })
 

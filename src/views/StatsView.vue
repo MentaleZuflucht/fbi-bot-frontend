@@ -1,10 +1,12 @@
 <script setup>
-import { ref, onMounted, nextTick, watch, onBeforeUnmount } from 'vue'
+import { ref, onMounted, nextTick, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import { gql } from '../lib/api'
 import { Chart, registerables } from 'chart.js'
 
 Chart.register(...registerables)
 
+const router = useRouter()
 const days = ref('30')
 const loading = ref(true)
 const error = ref('')
@@ -14,6 +16,7 @@ const dailyData = ref([])
 const hourlyData = ref([])
 const topChannels = ref([])
 const topActivities = ref([])
+const topUsers = ref([])
 
 const dailyChart = ref(null)
 const hourlyChart = ref(null)
@@ -48,6 +51,7 @@ async function fetchAll() {
         hourlyMessageDistribution(days: $days) { hour count }
         topChannels(days: $days, limit: 10) { name count }
         topActivities(days: $days, limit: 10) { name count }
+        topUsers(days: $days, limit: 10) { userId name messageCount voiceHours }
       }
     `, { days: daysVal })
 
@@ -56,6 +60,7 @@ async function fetchAll() {
     hourlyData.value = data.hourlyMessageDistribution
     topChannels.value = data.topChannels
     topActivities.value = data.topActivities
+    topUsers.value = data.topUsers
     loading.value = false
 
     await nextTick()
@@ -194,6 +199,11 @@ function renderCharts() {
   }
 }
 
+function formatVoice(hours) {
+  if (hours < 1) return `${Math.round(hours * 60)}m`
+  return `${hours}h`
+}
+
 onMounted(fetchAll)
 </script>
 
@@ -226,7 +236,7 @@ onMounted(fetchAll)
 
     <template v-else-if="serverStats">
       <!-- Summary cards -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
           <p class="text-sm text-gray-400 mb-1">Total Messages</p>
           <p class="text-3xl font-bold">{{ serverStats.totalMessages.toLocaleString() }}</p>
@@ -238,6 +248,10 @@ onMounted(fetchAll)
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
           <p class="text-sm text-gray-400 mb-1">Activities Logged</p>
           <p class="text-3xl font-bold">{{ serverStats.totalActivities.toLocaleString() }}</p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+          <p class="text-sm text-gray-400 mb-1">Most Common Activity</p>
+          <p class="text-xl font-semibold truncate">{{ serverStats.mostCommonActivity || '—' }}</p>
         </div>
       </div>
 
@@ -262,30 +276,53 @@ onMounted(fetchAll)
       </div>
 
       <!-- Top lists -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Top Users -->
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 class="text-sm font-semibold text-gray-300 mb-4">Top Channels by Messages</h3>
-          <div v-if="!topChannels.length" class="text-gray-500 text-sm">No data</div>
-          <div v-for="(ch, i) in topChannels" :key="ch.name" class="flex items-center gap-3 py-2">
-            <span class="text-gray-500 text-sm w-5 text-right">{{ i + 1 }}</span>
-            <span class="font-mono text-sm text-gray-400 truncate flex-1">{{ ch.name }}</span>
-            <div class="w-32 bg-gray-800 rounded-full h-2">
-              <div class="bg-indigo-500 h-2 rounded-full" :style="{ width: (ch.count / topChannels[0].count * 100) + '%' }"></div>
+          <h3 class="text-sm font-semibold text-gray-300 mb-4">Top Users</h3>
+          <div v-if="!topUsers.length" class="text-gray-500 text-sm">No data</div>
+          <div
+            v-for="(u, i) in topUsers"
+            :key="u.userId"
+            @click="router.push(`/users/${u.userId}`)"
+            class="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-800/50 -mx-2 px-2 rounded-lg transition-colors"
+          >
+            <span class="text-gray-500 text-sm w-5 text-right shrink-0">{{ i + 1 }}</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium truncate">{{ u.name }}</p>
+              <p class="text-xs text-gray-500">{{ u.messageCount.toLocaleString() }} msgs · {{ formatVoice(u.voiceHours) }} voice</p>
             </div>
-            <span class="text-sm text-gray-400 w-16 text-right">{{ ch.count.toLocaleString() }}</span>
+            <div class="w-20 bg-gray-800 rounded-full h-2 shrink-0">
+              <div class="bg-emerald-500 h-2 rounded-full" :style="{ width: (u.messageCount / topUsers[0].messageCount * 100) + '%' }"></div>
+            </div>
           </div>
         </div>
 
+        <!-- Top Channels -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h3 class="text-sm font-semibold text-gray-300 mb-4">Top Channels</h3>
+          <div v-if="!topChannels.length" class="text-gray-500 text-sm">No data</div>
+          <div v-for="(ch, i) in topChannels" :key="ch.name" class="flex items-center gap-3 py-2">
+            <span class="text-gray-500 text-sm w-5 text-right shrink-0">{{ i + 1 }}</span>
+            <span class="font-mono text-sm text-gray-400 truncate flex-1">{{ ch.name }}</span>
+            <div class="w-20 bg-gray-800 rounded-full h-2 shrink-0">
+              <div class="bg-indigo-500 h-2 rounded-full" :style="{ width: (ch.count / topChannels[0].count * 100) + '%' }"></div>
+            </div>
+            <span class="text-xs text-gray-500 w-12 text-right shrink-0">{{ ch.count.toLocaleString() }}</span>
+          </div>
+        </div>
+
+        <!-- Top Activities -->
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <h3 class="text-sm font-semibold text-gray-300 mb-4">Top Activities</h3>
           <div v-if="!topActivities.length" class="text-gray-500 text-sm">No data</div>
           <div v-for="(act, i) in topActivities" :key="act.name" class="flex items-center gap-3 py-2">
-            <span class="text-gray-500 text-sm w-5 text-right">{{ i + 1 }}</span>
+            <span class="text-gray-500 text-sm w-5 text-right shrink-0">{{ i + 1 }}</span>
             <span class="text-sm truncate flex-1">{{ act.name }}</span>
-            <div class="w-32 bg-gray-800 rounded-full h-2">
+            <div class="w-20 bg-gray-800 rounded-full h-2 shrink-0">
               <div class="bg-purple-500 h-2 rounded-full" :style="{ width: (act.count / topActivities[0].count * 100) + '%' }"></div>
             </div>
-            <span class="text-sm text-gray-400 w-16 text-right">{{ act.count.toLocaleString() }}</span>
+            <span class="text-xs text-gray-500 w-12 text-right shrink-0">{{ act.count.toLocaleString() }}</span>
           </div>
         </div>
       </div>
