@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { gql } from '../lib/api'
 import { Chart, registerables } from 'chart.js'
@@ -20,6 +20,7 @@ const hourlyData = ref([])
 const topChannels = ref([])
 const topActivities = ref([])
 const topUsers = ref([])
+const topVoiceStates = ref([])
 
 const dailyChart = ref(null)
 const hourlyChart = ref(null)
@@ -81,6 +82,7 @@ async function fetchAll() {
         topChannels(startDate: $startDate, endDate: $endDate, limit: 10) { name count hours }
         topActivities(startDate: $startDate, endDate: $endDate, limit: 10) { name count hours }
         topUsers(startDate: $startDate, endDate: $endDate, limit: 10) { userId name messageCount voiceHours score }
+        topVoiceStateUsers(startDate: $startDate, endDate: $endDate, limit: 5) { stateType userId name hours }
       }
     `, vars)
 
@@ -90,6 +92,7 @@ async function fetchAll() {
     topChannels.value = data.topChannels
     topActivities.value = data.topActivities
     topUsers.value = data.topUsers
+    topVoiceStates.value = data.topVoiceStateUsers || []
     loading.value = false
 
     await nextTick()
@@ -244,6 +247,45 @@ function formatVoice(hours) {
   return `${hours}h`
 }
 
+const voiceStateLabels = {
+  DEAF: 'Server deafened',
+  MUTE: 'Server muted',
+  SELF_DEAF: 'Self deafened',
+  SELF_MUTE: 'Self muted',
+  SELF_STREAM: 'Streaming',
+  SELF_VIDEO: 'Camera on',
+}
+
+const voiceStateColors = {
+  DEAF: 'text-red-400',
+  MUTE: 'text-red-400',
+  SELF_DEAF: 'text-orange-400',
+  SELF_MUTE: 'text-orange-400',
+  SELF_STREAM: 'text-purple-400',
+  SELF_VIDEO: 'text-blue-400',
+}
+
+/** Stable column order for voice-state groups (matches Discord semantics). */
+const voiceStateColumnOrder = ['SELF_MUTE', 'MUTE', 'SELF_DEAF', 'DEAF', 'SELF_STREAM', 'SELF_VIDEO']
+
+const groupedVoiceStates = computed(() => {
+  const groups = {}
+  for (const vs of topVoiceStates.value) {
+    const key = vs.stateType
+    if (!groups[key]) groups[key] = []
+    groups[key].push(vs)
+  }
+  return groups
+})
+
+/** Ordered sections for template (avoids v-if + v-for on same node). */
+const voiceStateSections = computed(() => {
+  const g = groupedVoiceStates.value
+  return voiceStateColumnOrder
+    .filter((st) => g[st]?.length)
+    .map((st) => ({ stateType: st, users: g[st] }))
+})
+
 setPreset(30)
 </script>
 
@@ -320,6 +362,34 @@ setPreset(30)
         </div>
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 h-80">
           <canvas ref="channelChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Server-wide: who spent the most time in each voice state -->
+      <div v-if="voiceStateSections.length" class="mb-8">
+        <h2 class="text-lg font-semibold text-white mb-1">Voice state leaders</h2>
+        <p class="text-sm text-gray-500 mb-4 max-w-3xl">
+          Server-wide ranking for the selected period: members with the most time in each state (self-muted, server-muted, deafened, streaming, camera, etc.). Times are summed from voice session logs.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div
+            v-for="section in voiceStateSections"
+            :key="section.stateType"
+            class="bg-gray-900 border border-gray-800 rounded-xl p-4"
+          >
+            <h3 class="text-sm font-semibold mb-2" :class="voiceStateColors[section.stateType] || 'text-gray-300'">
+              {{ voiceStateLabels[section.stateType] || section.stateType }}
+            </h3>
+            <div
+              v-for="u in section.users"
+              :key="u.userId"
+              @click="router.push(`/users/${u.userId}`)"
+              class="flex justify-between py-1 text-sm cursor-pointer hover:bg-gray-800/60 -mx-1 px-1 rounded transition-colors"
+            >
+              <span class="text-gray-300 truncate mr-2">{{ u.name }}</span>
+              <span class="text-gray-500 shrink-0">{{ formatHours(u.hours) }}</span>
+            </div>
+          </div>
         </div>
       </div>
 

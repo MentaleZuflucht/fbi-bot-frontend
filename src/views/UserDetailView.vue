@@ -128,6 +128,14 @@ const presPreset = ref(30)
 const presenceList = ref([])
 const presenceLoading = ref(false)
 const presSortBy = ref('date')
+/** '' = all; otherwise matches API statusType (ONLINE, IDLE, OFFLINE) */
+const presStatusFilter = ref('')
+const presStatusOptions = [
+  { value: '', label: 'All' },
+  { value: 'ONLINE', label: 'Online' },
+  { value: 'IDLE', label: 'Idle' },
+  { value: 'OFFLINE', label: 'Offline' },
+]
 
 function setPresPreset(days) {
   presPreset.value = days
@@ -137,7 +145,10 @@ function setPresPreset(days) {
 }
 
 const sortedPresence = computed(() => {
-  const list = [...presenceList.value]
+  let list = [...presenceList.value]
+  if (presStatusFilter.value) {
+    list = list.filter((p) => p.statusType === presStatusFilter.value)
+  }
   if (presSortBy.value === 'duration') {
     list.sort((a, b) => (b.durationMinutes ?? Infinity) - (a.durationMinutes ?? Infinity))
   }
@@ -147,10 +158,6 @@ const sortedPresence = computed(() => {
 // --- Unique Activities ---
 const uniqueActivities = ref([])
 const uniqueActLoading = ref(false)
-
-// --- Voice state stats ---
-const topVoiceStates = ref([])
-const voiceStatsLoading = ref(false)
 
 // === Data fetching ===
 
@@ -326,22 +333,6 @@ async function fetchUniqueActivities() {
   }
 }
 
-async function fetchTopVoiceStates() {
-  voiceStatsLoading.value = true
-  try {
-    const vars = { ...makeDateVars(statsStartDate.value, statsEndDate.value) }
-    const data = await gql(`
-      query TopVS($startDate: String, $endDate: String) {
-        topVoiceStateUsers(startDate: $startDate, endDate: $endDate, limit: 3) {
-          stateType userId name hours
-        }
-      }
-    `, vars)
-    topVoiceStates.value = data.topVoiceStateUsers || []
-  } catch (e) { /* non-critical */ }
-  finally { voiceStatsLoading.value = false }
-}
-
 async function fetchStats() {
   statsLoading.value = true
   try {
@@ -494,19 +485,9 @@ const stateColors = {
   SELF_VIDEO: 'text-blue-400',
 }
 
-const groupedVoiceStates = computed(() => {
-  const groups = {}
-  for (const vs of topVoiceStates.value) {
-    if (!groups[vs.stateType]) groups[vs.stateType] = []
-    groups[vs.stateType].push(vs)
-  }
-  return groups
-})
-
 onMounted(() => {
   fetchUser()
   fetchUniqueActivities()
-  fetchTopVoiceStates()
 })
 </script>
 
@@ -597,20 +578,6 @@ onMounted(() => {
           </table>
         </div>
         <div v-else class="text-gray-500 text-sm mb-8">No activities recorded</div>
-
-        <!-- Top Voice States -->
-        <div v-if="Object.keys(groupedVoiceStates).length" class="mb-8">
-          <h2 class="text-lg font-semibold mb-3">Top Voice State Users</h2>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div v-for="(users, st) in groupedVoiceStates" :key="st" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
-              <h3 class="text-sm font-semibold mb-2" :class="stateColors[st] || 'text-gray-300'">{{ stateLabels[st] || st }}</h3>
-              <div v-for="u in users" :key="u.userId" class="flex justify-between py-1 text-sm">
-                <span class="text-gray-300 truncate mr-2">{{ u.name }}</span>
-                <span class="text-gray-500 shrink-0">{{ formatHours(u.hours) }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <h2 class="text-lg font-semibold mb-3">Name History</h2>
         <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -936,6 +903,17 @@ onMounted(() => {
               :class="presPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
           </div>
 
+          <div class="flex items-center gap-1.5 text-sm text-gray-400">
+            <span class="text-gray-500">Status:</span>
+            <button v-for="opt in presStatusOptions" :key="opt.value || 'all'"
+              type="button"
+              @click="presStatusFilter = opt.value"
+              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+              :class="presStatusFilter === opt.value ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">
+              {{ opt.label }}
+            </button>
+          </div>
+
           <div class="ml-auto flex items-center gap-2 text-sm text-gray-400">
             <span>Sort:</span>
             <button @click="presSortBy = 'date'" class="px-2 py-0.5 rounded text-xs"
@@ -966,6 +944,9 @@ onMounted(() => {
                 <td class="px-4 py-2.5">
                   {{ ps.isCurrent ? 'Current' : formatDuration(ps.durationMinutes) }}
                 </td>
+              </tr>
+              <tr v-if="presenceList.length && !sortedPresence.length">
+                <td colspan="4" class="px-4 py-6 text-center text-gray-500">No entries match the selected status</td>
               </tr>
               <tr v-if="!presenceList.length">
                 <td colspan="4" class="px-4 py-6 text-center text-gray-500">No presence data</td>
