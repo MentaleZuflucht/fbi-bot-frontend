@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { gql } from '../lib/api'
 import { Chart, registerables } from 'chart.js'
@@ -23,26 +23,136 @@ const tabs = [
   { id: 'statuses', label: 'Statuses' },
 ]
 
-// --- Filters ---
-const msgDays = ref('30')
-const msgChannel = ref('')
-const voiceDays = ref('30')
-const voiceChannel = ref('')
+// --- Shared date helpers ---
+function defaultDateRange(days) {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(start.getDate() - days)
+  return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] }
+}
 
-// --- Lazy-loaded tab data ---
+function makeDateVars(start, end) {
+  const vars = {}
+  if (start) vars.startDate = start
+  if (end) vars.endDate = end
+  return vars
+}
+
+// --- Messages tab ---
+const msgStartDate = ref(defaultDateRange(30).start)
+const msgEndDate = ref(defaultDateRange(30).end)
+const msgPreset = ref(30)
+const msgChannel = ref('')
 const messages = ref([])
 const messagesLoading = ref(false)
+
+function setMsgPreset(days) {
+  msgPreset.value = days
+  if (days === null) { msgStartDate.value = ''; msgEndDate.value = '' }
+  else { const r = defaultDateRange(days); msgStartDate.value = r.start; msgEndDate.value = r.end }
+  fetchMessages()
+}
+
+// --- Voice tab ---
+const voiceStartDate = ref(defaultDateRange(30).start)
+const voiceEndDate = ref(defaultDateRange(30).end)
+const voicePreset = ref(30)
+const voiceChannel = ref('')
 const voiceSessions = ref([])
 const voiceLoading = ref(false)
+const voiceSortBy = ref('date')
+const expandedSession = ref(null)
+const sessionStates = ref({})
+const statesLoading = ref({})
+
+function setVoicePreset(days) {
+  voicePreset.value = days
+  if (days === null) { voiceStartDate.value = ''; voiceEndDate.value = '' }
+  else { const r = defaultDateRange(days); voiceStartDate.value = r.start; voiceEndDate.value = r.end }
+  fetchVoice()
+}
+
+const sortedVoiceSessions = computed(() => {
+  const list = [...voiceSessions.value]
+  if (voiceSortBy.value === 'duration') {
+    list.sort((a, b) => (b.durationMinutes ?? Infinity) - (a.durationMinutes ?? Infinity))
+  }
+  return list
+})
 
 // --- Stats tab ---
-const statsDays = ref('30')
+const statsStartDate = ref(defaultDateRange(30).start)
+const statsEndDate = ref(defaultDateRange(30).end)
+const statsPreset = ref(30)
 const statsData = ref(null)
 const statsLoading = ref(false)
 const dailyChart = ref(null)
 const hourlyChart = ref(null)
 let dailyChartInstance = null
 let hourlyChartInstance = null
+
+function setStatsPreset(days) {
+  statsPreset.value = days
+  if (days === null) { statsStartDate.value = ''; statsEndDate.value = '' }
+  else { const r = defaultDateRange(days); statsStartDate.value = r.start; statsEndDate.value = r.end }
+  fetchStats()
+}
+
+// --- Activities tab ---
+const actStartDate = ref(defaultDateRange(30).start)
+const actEndDate = ref(defaultDateRange(30).end)
+const actPreset = ref(30)
+const activitiesList = ref([])
+const activitiesLoading = ref(false)
+const actSortBy = ref('date')
+
+function setActPreset(days) {
+  actPreset.value = days
+  if (days === null) { actStartDate.value = ''; actEndDate.value = '' }
+  else { const r = defaultDateRange(days); actStartDate.value = r.start; actEndDate.value = r.end }
+  fetchActivities()
+}
+
+const sortedActivities = computed(() => {
+  const list = [...activitiesList.value]
+  if (actSortBy.value === 'duration') {
+    list.sort((a, b) => (b.durationMinutes ?? Infinity) - (a.durationMinutes ?? Infinity))
+  }
+  return list
+})
+
+// --- Presence tab ---
+const presStartDate = ref(defaultDateRange(30).start)
+const presEndDate = ref(defaultDateRange(30).end)
+const presPreset = ref(30)
+const presenceList = ref([])
+const presenceLoading = ref(false)
+const presSortBy = ref('date')
+
+function setPresPreset(days) {
+  presPreset.value = days
+  if (days === null) { presStartDate.value = ''; presEndDate.value = '' }
+  else { const r = defaultDateRange(days); presStartDate.value = r.start; presEndDate.value = r.end }
+  fetchPresence()
+}
+
+const sortedPresence = computed(() => {
+  const list = [...presenceList.value]
+  if (presSortBy.value === 'duration') {
+    list.sort((a, b) => (b.durationMinutes ?? Infinity) - (a.durationMinutes ?? Infinity))
+  }
+  return list
+})
+
+// --- Unique Activities ---
+const uniqueActivities = ref([])
+const uniqueActLoading = ref(false)
+
+// --- Voice state stats ---
+const topVoiceStates = ref([])
+const voiceStatsLoading = ref(false)
+
+// === Data fetching ===
 
 async function fetchUser() {
   loading.value = true
@@ -73,23 +183,6 @@ async function fetchUser() {
             effectiveFrom
             effectiveUntil
           }
-          activities(limit: 50) {
-            id
-            activityType
-            activityName
-            startedAt
-            endedAt
-            durationMinutes
-            isOngoing
-          }
-          presenceStatus(limit: 50) {
-            id
-            statusType
-            setAt
-            changedAt
-            durationMinutes
-            isCurrent
-          }
           customStatuses(limit: 50) {
             id
             statusText
@@ -110,12 +203,11 @@ async function fetchUser() {
 async function fetchMessages() {
   messagesLoading.value = true
   try {
-    const vars = { userId: userId.value, limit: 100 }
-    if (msgDays.value) vars.days = parseInt(msgDays.value)
+    const vars = { userId: userId.value, limit: 100, ...makeDateVars(msgStartDate.value, msgEndDate.value) }
     if (msgChannel.value.trim()) vars.channelId = msgChannel.value.trim()
     const data = await gql(`
-      query Messages($userId: String, $limit: Int, $days: Int, $channelId: String) {
-        messages(userId: $userId, limit: $limit, days: $days, channelId: $channelId) {
+      query Messages($userId: String, $limit: Int, $startDate: String, $endDate: String, $channelId: String) {
+        messages(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate, channelId: $channelId) {
           messageId
           channelId
           messageType
@@ -136,19 +228,26 @@ async function fetchMessages() {
 
 async function fetchVoice() {
   voiceLoading.value = true
+  expandedSession.value = null
   try {
-    const vars = { userId: userId.value, limit: 100 }
-    if (voiceDays.value) vars.days = parseInt(voiceDays.value)
+    const vars = { userId: userId.value, limit: 200, ...makeDateVars(voiceStartDate.value, voiceEndDate.value) }
     if (voiceChannel.value.trim()) vars.channelId = voiceChannel.value.trim()
     const data = await gql(`
-      query VoiceSessions($userId: String, $limit: Int, $days: Int, $channelId: String) {
-        voiceSessions(userId: $userId, limit: $limit, days: $days, channelId: $channelId) {
+      query VoiceSessions($userId: String, $limit: Int, $startDate: String, $endDate: String, $channelId: String) {
+        voiceSessions(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate, channelId: $channelId) {
           id
           channelId
           joinedAt
           leftAt
           durationMinutes
           isOngoing
+          voiceStates {
+            id
+            stateType
+            startedAt
+            endedAt
+            durationMinutes
+          }
         }
       }
     `, vars)
@@ -160,18 +259,101 @@ async function fetchVoice() {
   }
 }
 
+async function fetchActivities() {
+  activitiesLoading.value = true
+  try {
+    const vars = { userId: userId.value, limit: 200, ...makeDateVars(actStartDate.value, actEndDate.value) }
+    const data = await gql(`
+      query Activities($userId: String, $limit: Int, $startDate: String, $endDate: String) {
+        activities(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate) {
+          id
+          activityType
+          activityName
+          startedAt
+          endedAt
+          durationMinutes
+          isOngoing
+        }
+      }
+    `, vars)
+    activitiesList.value = data.activities
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    activitiesLoading.value = false
+  }
+}
+
+async function fetchPresence() {
+  presenceLoading.value = true
+  try {
+    const vars = { userId: userId.value, limit: 200, ...makeDateVars(presStartDate.value, presEndDate.value) }
+    const data = await gql(`
+      query Presence($userId: String, $limit: Int, $startDate: String, $endDate: String) {
+        presenceStatus(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate) {
+          id
+          statusType
+          setAt
+          changedAt
+          durationMinutes
+          isCurrent
+        }
+      }
+    `, vars)
+    presenceList.value = data.presenceStatus
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    presenceLoading.value = false
+  }
+}
+
+async function fetchUniqueActivities() {
+  uniqueActLoading.value = true
+  try {
+    const data = await gql(`
+      query UniqueActs($userId: String!) {
+        user(userId: $userId) {
+          uniqueActivities { activityName totalHours count }
+        }
+      }
+    `, { userId: userId.value })
+    uniqueActivities.value = data.user?.uniqueActivities || []
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    uniqueActLoading.value = false
+  }
+}
+
+async function fetchTopVoiceStates() {
+  voiceStatsLoading.value = true
+  try {
+    const vars = { ...makeDateVars(statsStartDate.value, statsEndDate.value) }
+    const data = await gql(`
+      query TopVS($startDate: String, $endDate: String) {
+        topVoiceStateUsers(startDate: $startDate, endDate: $endDate, limit: 3) {
+          stateType userId name hours
+        }
+      }
+    `, vars)
+    topVoiceStates.value = data.topVoiceStateUsers || []
+  } catch (e) { /* non-critical */ }
+  finally { voiceStatsLoading.value = false }
+}
+
 async function fetchStats() {
   statsLoading.value = true
   try {
-    const days = statsDays.value ? parseInt(statsDays.value) : null
+    const vars = { userId: userId.value, ...makeDateVars(statsStartDate.value, statsEndDate.value) }
     const data = await gql(`
-      query UserCharts($days: Int, $userId: String) {
-        dailyStats(days: $days, userId: $userId) { date messageCount voiceHours activityCount }
-        hourlyMessageDistribution(days: $days, userId: $userId) { hour count }
-        topChannels(days: $days, userId: $userId, limit: 8) { name count }
-        topActivities(days: $days, userId: $userId, limit: 8) { name count }
+      query UserCharts($startDate: String, $endDate: String, $userId: String) {
+        dailyStats(startDate: $startDate, endDate: $endDate, userId: $userId) { date messageCount voiceHours activityCount }
+        hourlyMessageDistribution(startDate: $startDate, endDate: $endDate, userId: $userId) { hour count }
+        topChannels(startDate: $startDate, endDate: $endDate, userId: $userId, limit: 8) { name count hours }
+        topActivities(startDate: $startDate, endDate: $endDate, userId: $userId, limit: 8) { name count hours }
       }
-    `, { days, userId: userId.value })
+    `, vars)
     statsData.value = data
     statsLoading.value = false
 
@@ -183,10 +365,15 @@ async function fetchStats() {
   }
 }
 
-function renderCharts() {
-  if (dailyChartInstance) dailyChartInstance.destroy()
-  if (hourlyChartInstance) hourlyChartInstance.destroy()
+function destroyCharts() {
+  if (dailyChartInstance) { dailyChartInstance.destroy(); dailyChartInstance = null }
+  if (hourlyChartInstance) { hourlyChartInstance.destroy(); hourlyChartInstance = null }
+}
 
+onBeforeUnmount(destroyCharts)
+
+function renderCharts() {
+  destroyCharts()
   const d = statsData.value
   if (!d) return
 
@@ -231,11 +418,25 @@ function chartOptions(title) {
   }
 }
 
-watch(activeTab, (tab) => {
+// Fix #7: re-render charts when switching back to statistics tab
+watch(activeTab, async (tab) => {
   if (tab === 'messages' && !messages.value.length && !messagesLoading.value) fetchMessages()
   if (tab === 'voice' && !voiceSessions.value.length && !voiceLoading.value) fetchVoice()
-  if (tab === 'statistics' && !statsData.value && !statsLoading.value) fetchStats()
+  if (tab === 'activities' && !activitiesList.value.length && !activitiesLoading.value) fetchActivities()
+  if (tab === 'presence' && !presenceList.value.length && !presenceLoading.value) fetchPresence()
+  if (tab === 'statistics') {
+    if (!statsData.value && !statsLoading.value) {
+      fetchStats()
+    } else if (statsData.value) {
+      await nextTick()
+      renderCharts()
+    }
+  }
 })
+
+function toggleSession(id) {
+  expandedSession.value = expandedSession.value === id ? null : id
+}
 
 function displayName(u) {
   const n = u.currentName
@@ -261,6 +462,12 @@ function formatDuration(mins) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
+function formatHours(h) {
+  if (h == null || h === 0) return '0h'
+  if (h < 1) return `${Math.round(h * 60)}m`
+  return `${h.toFixed(1)}h`
+}
+
 const statusColors = {
   ONLINE: 'text-green-400',
   IDLE: 'text-yellow-400',
@@ -269,7 +476,38 @@ const statusColors = {
   STREAMING: 'text-purple-400',
 }
 
-onMounted(fetchUser)
+const stateLabels = {
+  DEAF: 'Server Deaf',
+  MUTE: 'Server Mute',
+  SELF_DEAF: 'Self Deaf',
+  SELF_MUTE: 'Self Mute',
+  SELF_STREAM: 'Streaming',
+  SELF_VIDEO: 'Camera',
+}
+
+const stateColors = {
+  DEAF: 'text-red-400',
+  MUTE: 'text-red-400',
+  SELF_DEAF: 'text-orange-400',
+  SELF_MUTE: 'text-orange-400',
+  SELF_STREAM: 'text-purple-400',
+  SELF_VIDEO: 'text-blue-400',
+}
+
+const groupedVoiceStates = computed(() => {
+  const groups = {}
+  for (const vs of topVoiceStates.value) {
+    if (!groups[vs.stateType]) groups[vs.stateType] = []
+    groups[vs.stateType].push(vs)
+  }
+  return groups
+})
+
+onMounted(() => {
+  fetchUser()
+  fetchUniqueActivities()
+  fetchTopVoiceStates()
+})
 </script>
 
 <template>
@@ -337,6 +575,43 @@ onMounted(fetchUser)
           </div>
         </div>
 
+        <!-- Unique Activities -->
+        <h2 class="text-lg font-semibold mb-3">All Activities</h2>
+        <div v-if="uniqueActLoading" class="text-gray-500 text-sm mb-6">Loading...</div>
+        <div v-else-if="uniqueActivities.length" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-8">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left text-gray-400">
+                <th class="px-4 py-2.5 font-medium">Activity</th>
+                <th class="px-4 py-2.5 font-medium text-right">Total Hours</th>
+                <th class="px-4 py-2.5 font-medium text-right">Sessions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="ua in uniqueActivities" :key="ua.activityName" class="border-b border-gray-800/50">
+                <td class="px-4 py-2.5 font-medium">{{ ua.activityName }}</td>
+                <td class="px-4 py-2.5 text-right text-gray-400">{{ formatHours(ua.totalHours) }}</td>
+                <td class="px-4 py-2.5 text-right text-gray-500">{{ ua.count }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="text-gray-500 text-sm mb-8">No activities recorded</div>
+
+        <!-- Top Voice States -->
+        <div v-if="Object.keys(groupedVoiceStates).length" class="mb-8">
+          <h2 class="text-lg font-semibold mb-3">Top Voice State Users</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div v-for="(users, st) in groupedVoiceStates" :key="st" class="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <h3 class="text-sm font-semibold mb-2" :class="stateColors[st] || 'text-gray-300'">{{ stateLabels[st] || st }}</h3>
+              <div v-for="u in users" :key="u.userId" class="flex justify-between py-1 text-sm">
+                <span class="text-gray-300 truncate mr-2">{{ u.name }}</span>
+                <span class="text-gray-500 shrink-0">{{ formatHours(u.hours) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <h2 class="text-lg font-semibold mb-3">Name History</h2>
         <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <table class="w-full text-sm">
@@ -369,23 +644,20 @@ onMounted(fetchUser)
 
       <!-- Statistics -->
       <div v-if="activeTab === 'statistics'">
-        <div class="flex items-center gap-3 mb-6">
-          <label class="text-sm text-gray-400">Period:</label>
-          <select
-            v-model="statsDays"
-            @change="fetchStats"
-            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="1">24 hours</option>
-            <option value="3">3 days</option>
-            <option value="7">7 days</option>
-            <option value="14">14 days</option>
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-            <option value="180">6 months</option>
-            <option value="365">1 year</option>
-            <option value="">All time</option>
-          </select>
+        <div class="flex flex-wrap items-center gap-3 mb-6">
+          <div class="flex items-center gap-2">
+            <input type="date" v-model="statsStartDate" @change="statsPreset = null; fetchStats()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <span class="text-gray-500 text-sm">to</span>
+            <input type="date" v-model="statsEndDate" @change="statsPreset = null; fetchStats()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div class="flex gap-1">
+            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
+              :key="p.l" @click="setStatsPreset(p.d)"
+              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+              :class="statsPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+          </div>
         </div>
 
         <div v-if="statsLoading" class="text-gray-500 py-8">Loading charts...</div>
@@ -401,29 +673,29 @@ onMounted(fetchUser)
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-              <h3 class="text-sm font-semibold text-gray-300 mb-3">Top Channels</h3>
+              <h3 class="text-sm font-semibold text-gray-300 mb-3">Top Channels (Voice Hours)</h3>
               <div v-if="!statsData.topChannels.length" class="text-gray-500 text-sm">No data</div>
               <div v-for="ch in statsData.topChannels" :key="ch.name" class="flex items-center justify-between py-1.5">
                 <span class="font-mono text-sm text-gray-400 truncate mr-3">{{ ch.name }}</span>
                 <div class="flex items-center gap-2 shrink-0">
                   <div class="w-24 bg-gray-800 rounded-full h-2">
-                    <div class="bg-indigo-500 h-2 rounded-full" :style="{ width: (ch.count / statsData.topChannels[0].count * 100) + '%' }"></div>
+                    <div class="bg-indigo-500 h-2 rounded-full" :style="{ width: statsData.topChannels[0].hours ? (ch.hours / statsData.topChannels[0].hours * 100) + '%' : '0%' }"></div>
                   </div>
-                  <span class="text-sm text-gray-400 w-12 text-right">{{ ch.count }}</span>
+                  <span class="text-sm text-gray-400 w-14 text-right">{{ formatHours(ch.hours) }}</span>
                 </div>
               </div>
             </div>
 
             <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-              <h3 class="text-sm font-semibold text-gray-300 mb-3">Top Activities</h3>
+              <h3 class="text-sm font-semibold text-gray-300 mb-3">Top Activities (Hours)</h3>
               <div v-if="!statsData.topActivities.length" class="text-gray-500 text-sm">No data</div>
               <div v-for="act in statsData.topActivities" :key="act.name" class="flex items-center justify-between py-1.5">
                 <span class="text-sm truncate mr-3">{{ act.name }}</span>
                 <div class="flex items-center gap-2 shrink-0">
                   <div class="w-24 bg-gray-800 rounded-full h-2">
-                    <div class="bg-purple-500 h-2 rounded-full" :style="{ width: (act.count / statsData.topActivities[0].count * 100) + '%' }"></div>
+                    <div class="bg-purple-500 h-2 rounded-full" :style="{ width: statsData.topActivities[0].hours ? (act.hours / statsData.topActivities[0].hours * 100) + '%' : '0%' }"></div>
                   </div>
-                  <span class="text-sm text-gray-400 w-12 text-right">{{ act.count }}</span>
+                  <span class="text-sm text-gray-400 w-14 text-right">{{ formatHours(act.hours) }}</span>
                 </div>
               </div>
             </div>
@@ -434,19 +706,19 @@ onMounted(fetchUser)
       <!-- Messages -->
       <div v-if="activeTab === 'messages'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <select
-            v-model="msgDays"
-            @change="fetchMessages"
-            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="1">24 hours</option>
-            <option value="3">3 days</option>
-            <option value="7">7 days</option>
-            <option value="14">14 days</option>
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-            <option value="">All time</option>
-          </select>
+          <div class="flex items-center gap-2">
+            <input type="date" v-model="msgStartDate" @change="msgPreset = null; fetchMessages()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <span class="text-gray-500 text-sm">to</span>
+            <input type="date" v-model="msgEndDate" @change="msgPreset = null; fetchMessages()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div class="flex gap-1">
+            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:null,l:'All'}]"
+              :key="p.l" @click="setMsgPreset(p.d)"
+              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+              :class="msgPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+          </div>
           <input
             v-model="msgChannel"
             @keyup.enter="fetchMessages"
@@ -492,19 +764,19 @@ onMounted(fetchUser)
       <!-- Voice -->
       <div v-if="activeTab === 'voice'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <select
-            v-model="voiceDays"
-            @change="fetchVoice"
-            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="1">24 hours</option>
-            <option value="3">3 days</option>
-            <option value="7">7 days</option>
-            <option value="14">14 days</option>
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-            <option value="">All time</option>
-          </select>
+          <div class="flex items-center gap-2">
+            <input type="date" v-model="voiceStartDate" @change="voicePreset = null; fetchVoice()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <span class="text-gray-500 text-sm">to</span>
+            <input type="date" v-model="voiceEndDate" @change="voicePreset = null; fetchVoice()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div class="flex gap-1">
+            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:null,l:'All'}]"
+              :key="p.l" @click="setVoicePreset(p.d)"
+              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+              :class="voicePreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+          </div>
           <input
             v-model="voiceChannel"
             @keyup.enter="fetchVoice"
@@ -513,6 +785,14 @@ onMounted(fetchUser)
             class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
           <button @click="fetchVoice" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm transition-colors">Apply</button>
+
+          <div class="ml-auto flex items-center gap-2 text-sm text-gray-400">
+            <span>Sort:</span>
+            <button @click="voiceSortBy = 'date'" class="px-2 py-0.5 rounded text-xs"
+              :class="voiceSortBy === 'date' ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700'">Date</button>
+            <button @click="voiceSortBy = 'duration'" class="px-2 py-0.5 rounded text-xs"
+              :class="voiceSortBy === 'duration' ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700'">Duration</button>
+          </div>
         </div>
 
         <div v-if="voiceLoading" class="text-gray-500 py-4">Loading...</div>
@@ -520,6 +800,7 @@ onMounted(fetchUser)
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-gray-800 text-left text-gray-400">
+                <th class="px-4 py-2.5 font-medium w-6"></th>
                 <th class="px-4 py-2.5 font-medium">Channel</th>
                 <th class="px-4 py-2.5 font-medium">Joined</th>
                 <th class="px-4 py-2.5 font-medium">Left</th>
@@ -528,20 +809,51 @@ onMounted(fetchUser)
               </tr>
             </thead>
             <tbody>
-              <tr v-for="vs in voiceSessions" :key="vs.id" class="border-b border-gray-800/50">
-                <td class="px-4 py-2.5 font-mono text-xs text-gray-400">{{ vs.channelId }}</td>
-                <td class="px-4 py-2.5 text-gray-400">{{ formatDate(vs.joinedAt) }}</td>
-                <td class="px-4 py-2.5 text-gray-400">{{ vs.leftAt ? formatDate(vs.leftAt) : '—' }}</td>
-                <td class="px-4 py-2.5">{{ formatDuration(vs.durationMinutes) }}</td>
-                <td class="px-4 py-2.5">
-                  <span
-                    v-if="vs.isOngoing"
-                    class="text-green-400 text-xs font-medium px-2 py-0.5 bg-green-400/10 rounded-full"
-                  >Live</span>
-                </td>
-              </tr>
+              <template v-for="vs in sortedVoiceSessions" :key="vs.id">
+                <tr
+                  class="border-b border-gray-800/50 cursor-pointer hover:bg-gray-800/30 transition-colors"
+                  @click="toggleSession(vs.id)"
+                >
+                  <td class="px-4 py-2.5 text-gray-500">
+                    <span v-if="vs.voiceStates && vs.voiceStates.length" class="text-xs">{{ expandedSession === vs.id ? '▼' : '▶' }}</span>
+                  </td>
+                  <td class="px-4 py-2.5 font-mono text-xs text-gray-400">{{ vs.channelId }}</td>
+                  <td class="px-4 py-2.5 text-gray-400">{{ formatDate(vs.joinedAt) }}</td>
+                  <td class="px-4 py-2.5 text-gray-400">{{ vs.leftAt ? formatDate(vs.leftAt) : '—' }}</td>
+                  <td class="px-4 py-2.5">{{ formatDuration(vs.durationMinutes) }}</td>
+                  <td class="px-4 py-2.5">
+                    <span
+                      v-if="vs.isOngoing"
+                      class="text-green-400 text-xs font-medium px-2 py-0.5 bg-green-400/10 rounded-full"
+                    >Live</span>
+                    <span v-else-if="vs.voiceStates && vs.voiceStates.length" class="text-gray-500 text-xs">
+                      {{ vs.voiceStates.length }} state{{ vs.voiceStates.length > 1 ? 's' : '' }}
+                    </span>
+                  </td>
+                </tr>
+                <!-- Expanded voice states -->
+                <tr v-if="expandedSession === vs.id && vs.voiceStates && vs.voiceStates.length">
+                  <td colspan="6" class="px-0 py-0">
+                    <div class="bg-gray-950/50 px-8 py-3">
+                      <div class="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wide">Voice States</div>
+                      <div class="space-y-1.5">
+                        <div v-for="state in vs.voiceStates" :key="state.id"
+                          class="flex items-center gap-4 text-sm">
+                          <span class="font-medium w-28" :class="stateColors[state.stateType] || 'text-gray-400'">
+                            {{ stateLabels[state.stateType] || state.stateType }}
+                          </span>
+                          <span class="text-gray-500 text-xs">{{ formatDate(state.startedAt) }}</span>
+                          <span class="text-gray-600 text-xs">→</span>
+                          <span class="text-gray-500 text-xs">{{ state.endedAt ? formatDate(state.endedAt) : 'Active' }}</span>
+                          <span class="text-gray-400 text-xs ml-auto">{{ formatDuration(state.durationMinutes) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
               <tr v-if="!voiceSessions.length">
-                <td colspan="5" class="px-4 py-6 text-center text-gray-500">No voice sessions</td>
+                <td colspan="6" class="px-4 py-6 text-center text-gray-500">No voice sessions</td>
               </tr>
             </tbody>
           </table>
@@ -550,7 +862,32 @@ onMounted(fetchUser)
 
       <!-- Activities -->
       <div v-if="activeTab === 'activities'">
-        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <div class="flex items-center gap-2">
+            <input type="date" v-model="actStartDate" @change="actPreset = null; fetchActivities()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <span class="text-gray-500 text-sm">to</span>
+            <input type="date" v-model="actEndDate" @change="actPreset = null; fetchActivities()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div class="flex gap-1">
+            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:null,l:'All'}]"
+              :key="p.l" @click="setActPreset(p.d)"
+              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+              :class="actPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+          </div>
+
+          <div class="ml-auto flex items-center gap-2 text-sm text-gray-400">
+            <span>Sort:</span>
+            <button @click="actSortBy = 'date'" class="px-2 py-0.5 rounded text-xs"
+              :class="actSortBy === 'date' ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700'">Date</button>
+            <button @click="actSortBy = 'duration'" class="px-2 py-0.5 rounded text-xs"
+              :class="actSortBy === 'duration' ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700'">Duration</button>
+          </div>
+        </div>
+
+        <div v-if="activitiesLoading" class="text-gray-500 py-4">Loading...</div>
+        <div v-else class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-gray-800 text-left text-gray-400">
@@ -562,7 +899,7 @@ onMounted(fetchUser)
               </tr>
             </thead>
             <tbody>
-              <tr v-for="act in user.activities" :key="act.id" class="border-b border-gray-800/50">
+              <tr v-for="act in sortedActivities" :key="act.id" class="border-b border-gray-800/50">
                 <td class="px-4 py-2.5 font-medium">{{ act.activityName }}</td>
                 <td class="px-4 py-2.5 text-gray-400 capitalize">{{ act.activityType.toLowerCase() }}</td>
                 <td class="px-4 py-2.5 text-gray-500">{{ formatDate(act.startedAt) }}</td>
@@ -574,7 +911,7 @@ onMounted(fetchUser)
                   >Live</span>
                 </td>
               </tr>
-              <tr v-if="!user.activities.length">
+              <tr v-if="!activitiesList.length">
                 <td colspan="5" class="px-4 py-6 text-center text-gray-500">No activities</td>
               </tr>
             </tbody>
@@ -584,7 +921,32 @@ onMounted(fetchUser)
 
       <!-- Presence -->
       <div v-if="activeTab === 'presence'">
-        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <div class="flex items-center gap-2">
+            <input type="date" v-model="presStartDate" @change="presPreset = null; fetchPresence()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <span class="text-gray-500 text-sm">to</span>
+            <input type="date" v-model="presEndDate" @change="presPreset = null; fetchPresence()"
+              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div class="flex gap-1">
+            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:null,l:'All'}]"
+              :key="p.l" @click="setPresPreset(p.d)"
+              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+              :class="presPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+          </div>
+
+          <div class="ml-auto flex items-center gap-2 text-sm text-gray-400">
+            <span>Sort:</span>
+            <button @click="presSortBy = 'date'" class="px-2 py-0.5 rounded text-xs"
+              :class="presSortBy === 'date' ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700'">Date</button>
+            <button @click="presSortBy = 'duration'" class="px-2 py-0.5 rounded text-xs"
+              :class="presSortBy === 'duration' ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700'">Duration</button>
+          </div>
+        </div>
+
+        <div v-if="presenceLoading" class="text-gray-500 py-4">Loading...</div>
+        <div v-else class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-gray-800 text-left text-gray-400">
@@ -595,7 +957,7 @@ onMounted(fetchUser)
               </tr>
             </thead>
             <tbody>
-              <tr v-for="ps in user.presenceStatus" :key="ps.id" class="border-b border-gray-800/50">
+              <tr v-for="ps in sortedPresence" :key="ps.id" class="border-b border-gray-800/50">
                 <td class="px-4 py-2.5 font-medium" :class="statusColors[ps.statusType] || 'text-gray-400'">
                   {{ ps.statusType }}
                 </td>
@@ -605,7 +967,7 @@ onMounted(fetchUser)
                   {{ ps.isCurrent ? 'Current' : formatDuration(ps.durationMinutes) }}
                 </td>
               </tr>
-              <tr v-if="!user.presenceStatus.length">
+              <tr v-if="!presenceList.length">
                 <td colspan="4" class="px-4 py-6 text-center text-gray-500">No presence data</td>
               </tr>
             </tbody>
