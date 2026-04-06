@@ -367,10 +367,7 @@ setPreset(30)
 
       <!-- Server-wide: who spent the most time in each voice state -->
       <div v-if="voiceStateSections.length" class="mb-8">
-        <h2 class="text-lg font-semibold text-white mb-1">Voice state leaders</h2>
-        <p class="text-sm text-gray-500 mb-4 max-w-3xl">
-          Server-wide ranking for the selected period: members with the most time in each state (self-muted, server-muted, deafened, streaming, camera, etc.). Times are summed from voice session logs.
-        </p>
+        <h2 class="text-lg font-semibold text-white mb-4">Voice state leaders</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div
             v-for="section in voiceStateSections"
