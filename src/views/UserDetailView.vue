@@ -142,6 +142,10 @@ const sortedPresence = computed(() => {
 const uniqueActivities = ref([])
 const uniqueActLoading = ref(false)
 
+// --- Top Connections ---
+const topConnections = ref([])
+const connectionsLoading = ref(false)
+
 // === Data fetching ===
 
 async function fetchUser() {
@@ -316,6 +320,36 @@ async function fetchUniqueActivities() {
   }
 }
 
+async function fetchTopConnections() {
+  connectionsLoading.value = true
+  try {
+    const data = await gql(`
+      query UserConnections($userId: String, $limit: Int) {
+        voiceConnections(userId: $userId, limit: $limit) {
+          user1Id
+          user1Name
+          user2Id
+          user2Name
+          sharedHours
+          sessionCount
+        }
+      }
+    `, { userId: userId.value, limit: 10 })
+    topConnections.value = data.voiceConnections
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    connectionsLoading.value = false
+  }
+}
+
+function connectionOtherUser(conn) {
+  if (conn.user1Id === userId.value) {
+    return { id: conn.user2Id, name: conn.user2Name }
+  }
+  return { id: conn.user1Id, name: conn.user1Name }
+}
+
 async function fetchStats() {
   statsLoading.value = true
   try {
@@ -471,6 +505,7 @@ const stateColors = {
 onMounted(() => {
   fetchUser()
   fetchUniqueActivities()
+  fetchTopConnections()
 })
 </script>
 
@@ -538,6 +573,37 @@ onMounted(() => {
             <p class="text-xl font-semibold font-mono truncate">{{ user.stats.mostUsedChannel || '—' }}</p>
           </div>
         </div>
+
+        <!-- Top Connections -->
+        <h2 class="text-lg font-semibold mb-3">Top Voice Connections</h2>
+        <div v-if="connectionsLoading" class="text-gray-500 text-sm mb-6">Loading...</div>
+        <div v-else-if="topConnections.length" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-8">
+          <div class="divide-y divide-gray-800/50">
+            <div
+              v-for="(conn, i) in topConnections"
+              :key="`${conn.user1Id}-${conn.user2Id}`"
+              class="flex items-center gap-3 px-4 py-3 hover:bg-gray-800/30 transition-colors"
+            >
+              <span class="text-gray-500 text-sm w-5 text-right shrink-0">{{ i + 1 }}</span>
+              <router-link
+                :to="`/users/${connectionOtherUser(conn).id}`"
+                class="text-sm font-medium text-indigo-400 hover:text-indigo-300 truncate transition-colors"
+              >{{ connectionOtherUser(conn).name }}</router-link>
+              <div class="flex-1"></div>
+              <div class="flex items-center gap-3 shrink-0">
+                <div class="w-24 bg-gray-800 rounded-full h-2 hidden sm:block">
+                  <div
+                    class="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full"
+                    :style="{ width: topConnections[0].sharedHours ? (conn.sharedHours / topConnections[0].sharedHours * 100) + '%' : '0%' }"
+                  ></div>
+                </div>
+                <span class="text-sm font-medium text-white w-14 text-right">{{ formatHours(conn.sharedHours) }}</span>
+                <span class="text-xs text-gray-500 w-20 text-right">{{ conn.sessionCount }} overlap{{ conn.sessionCount !== 1 ? 's' : '' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="text-gray-500 text-sm mb-8">No voice connections found</div>
 
         <!-- Unique Activities -->
         <h2 class="text-lg font-semibold mb-3">All Activities</h2>

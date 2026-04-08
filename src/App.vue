@@ -31,6 +31,13 @@ const showNav = computed(() => route.name !== 'login' && isAuthenticated())
               >
                 Users
               </router-link>
+              <router-link
+                to="/connections"
+                class="px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                :class="route.name === 'connections' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'"
+              >
+                Connections
+              </router-link>
             </div>
           </div>
           <button
