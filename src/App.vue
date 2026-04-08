@@ -36,7 +36,7 @@ const showNav = computed(() => route.name !== 'login' && isAuthenticated())
                 class="px-3 py-2 rounded-md text-sm font-medium transition-colors"
                 :class="route.name === 'connections' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'"
               >
-                Connections
+                Voice Dating
               </router-link>
             </div>
           </div>

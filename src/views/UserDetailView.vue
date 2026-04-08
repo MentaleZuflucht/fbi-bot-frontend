@@ -575,7 +575,7 @@ onMounted(() => {
         </div>
 
         <!-- Top Connections -->
-        <h2 class="text-lg font-semibold mb-3">Top Voice Connections</h2>
+        <h2 class="text-lg font-semibold mb-3">Top Pairings</h2>
         <div v-if="connectionsLoading" class="text-gray-500 text-sm mb-6">Loading...</div>
         <div v-else-if="topConnections.length" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-8">
           <div class="divide-y divide-gray-800/50">
@@ -603,7 +603,7 @@ onMounted(() => {
             </div>
           </div>
         </div>
-        <div v-else class="text-gray-500 text-sm mb-8">No voice connections found</div>
+        <div v-else class="text-gray-500 text-sm mb-8">No pairings found</div>
 
         <!-- Unique Activities -->
         <h2 class="text-lg font-semibold mb-3">All Activities</h2>
