@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { gql } from '../lib/api'
 import { Chart, registerables } from 'chart.js'
@@ -502,11 +502,17 @@ const stateColors = {
   SELF_VIDEO: 'text-blue-400',
 }
 
-onMounted(() => {
-  fetchUser()
-  fetchUniqueActivities()
-  fetchTopConnections()
-})
+// Same component instance is reused when navigating /users/A → /users/B; refetch when the route param changes.
+watch(
+  userId,
+  () => {
+    fetchUser()
+    fetchUniqueActivities()
+    fetchTopConnections()
+    refetchPeriodForActiveTab()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -575,7 +581,7 @@ onMounted(() => {
         </div>
 
         <!-- Top Connections -->
-        <h2 class="text-lg font-semibold mb-3">Top Pairings</h2>
+        <h2 class="text-lg font-semibold mb-3">Top Couples</h2>
         <div v-if="connectionsLoading" class="text-gray-500 text-sm mb-6">Loading...</div>
         <div v-else-if="topConnections.length" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-8">
           <div class="divide-y divide-gray-800/50">
