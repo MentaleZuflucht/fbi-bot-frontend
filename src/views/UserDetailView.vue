@@ -38,25 +38,45 @@ function makeDateVars(start, end) {
   return vars
 }
 
+// Shared date range for Messages, Statistics, Voice, Activities, Presence (stays in sync when switching tabs)
+const periodStart = ref(defaultDateRange(30).start)
+const periodEnd = ref(defaultDateRange(30).end)
+/** number of days for preset buttons, or null for "All" / custom range */
+const periodPreset = ref(30)
+
+function setPeriodPreset(days) {
+  periodPreset.value = days
+  if (days === null) {
+    periodStart.value = ''
+    periodEnd.value = ''
+  } else {
+    const r = defaultDateRange(days)
+    periodStart.value = r.start
+    periodEnd.value = r.end
+  }
+  refetchPeriodForActiveTab()
+}
+
+function onPeriodDateChange() {
+  periodPreset.value = null
+  refetchPeriodForActiveTab()
+}
+
+function refetchPeriodForActiveTab() {
+  const tab = activeTab.value
+  if (tab === 'messages') fetchMessages()
+  else if (tab === 'voice') fetchVoice()
+  else if (tab === 'activities') fetchActivities()
+  else if (tab === 'presence') fetchPresence()
+  else if (tab === 'statistics') fetchStats()
+}
+
 // --- Messages tab ---
-const msgStartDate = ref(defaultDateRange(30).start)
-const msgEndDate = ref(defaultDateRange(30).end)
-const msgPreset = ref(30)
 const msgChannel = ref('')
 const messages = ref([])
 const messagesLoading = ref(false)
 
-function setMsgPreset(days) {
-  msgPreset.value = days
-  if (days === null) { msgStartDate.value = ''; msgEndDate.value = '' }
-  else { const r = defaultDateRange(days); msgStartDate.value = r.start; msgEndDate.value = r.end }
-  fetchMessages()
-}
-
 // --- Voice tab ---
-const voiceStartDate = ref(defaultDateRange(30).start)
-const voiceEndDate = ref(defaultDateRange(30).end)
-const voicePreset = ref(30)
 const voiceChannel = ref('')
 const voiceSessions = ref([])
 const voiceLoading = ref(false)
@@ -64,13 +84,6 @@ const voiceSortBy = ref('date')
 const expandedSession = ref(null)
 const sessionStates = ref({})
 const statesLoading = ref({})
-
-function setVoicePreset(days) {
-  voicePreset.value = days
-  if (days === null) { voiceStartDate.value = ''; voiceEndDate.value = '' }
-  else { const r = defaultDateRange(days); voiceStartDate.value = r.start; voiceEndDate.value = r.end }
-  fetchVoice()
-}
 
 const sortedVoiceSessions = computed(() => {
   const list = [...voiceSessions.value]
@@ -81,9 +94,6 @@ const sortedVoiceSessions = computed(() => {
 })
 
 // --- Stats tab ---
-const statsStartDate = ref(defaultDateRange(30).start)
-const statsEndDate = ref(defaultDateRange(30).end)
-const statsPreset = ref(30)
 const statsData = ref(null)
 const statsLoading = ref(false)
 const dailyChart = ref(null)
@@ -91,27 +101,10 @@ const hourlyChart = ref(null)
 let dailyChartInstance = null
 let hourlyChartInstance = null
 
-function setStatsPreset(days) {
-  statsPreset.value = days
-  if (days === null) { statsStartDate.value = ''; statsEndDate.value = '' }
-  else { const r = defaultDateRange(days); statsStartDate.value = r.start; statsEndDate.value = r.end }
-  fetchStats()
-}
-
 // --- Activities tab ---
-const actStartDate = ref(defaultDateRange(30).start)
-const actEndDate = ref(defaultDateRange(30).end)
-const actPreset = ref(30)
 const activitiesList = ref([])
 const activitiesLoading = ref(false)
 const actSortBy = ref('date')
-
-function setActPreset(days) {
-  actPreset.value = days
-  if (days === null) { actStartDate.value = ''; actEndDate.value = '' }
-  else { const r = defaultDateRange(days); actStartDate.value = r.start; actEndDate.value = r.end }
-  fetchActivities()
-}
 
 const sortedActivities = computed(() => {
   const list = [...activitiesList.value]
@@ -122,9 +115,6 @@ const sortedActivities = computed(() => {
 })
 
 // --- Presence tab ---
-const presStartDate = ref(defaultDateRange(30).start)
-const presEndDate = ref(defaultDateRange(30).end)
-const presPreset = ref(30)
 const presenceList = ref([])
 const presenceLoading = ref(false)
 const presSortBy = ref('date')
@@ -136,13 +126,6 @@ const presStatusOptions = [
   { value: 'IDLE', label: 'Idle' },
   { value: 'OFFLINE', label: 'Offline' },
 ]
-
-function setPresPreset(days) {
-  presPreset.value = days
-  if (days === null) { presStartDate.value = ''; presEndDate.value = '' }
-  else { const r = defaultDateRange(days); presStartDate.value = r.start; presEndDate.value = r.end }
-  fetchPresence()
-}
 
 const sortedPresence = computed(() => {
   let list = [...presenceList.value]
@@ -210,7 +193,7 @@ async function fetchUser() {
 async function fetchMessages() {
   messagesLoading.value = true
   try {
-    const vars = { userId: userId.value, limit: 100, ...makeDateVars(msgStartDate.value, msgEndDate.value) }
+    const vars = { userId: userId.value, limit: 100, ...makeDateVars(periodStart.value, periodEnd.value) }
     if (msgChannel.value.trim()) vars.channelId = msgChannel.value.trim()
     const data = await gql(`
       query Messages($userId: String, $limit: Int, $startDate: String, $endDate: String, $channelId: String) {
@@ -237,7 +220,7 @@ async function fetchVoice() {
   voiceLoading.value = true
   expandedSession.value = null
   try {
-    const vars = { userId: userId.value, limit: 200, ...makeDateVars(voiceStartDate.value, voiceEndDate.value) }
+    const vars = { userId: userId.value, limit: 200, ...makeDateVars(periodStart.value, periodEnd.value) }
     if (voiceChannel.value.trim()) vars.channelId = voiceChannel.value.trim()
     const data = await gql(`
       query VoiceSessions($userId: String, $limit: Int, $startDate: String, $endDate: String, $channelId: String) {
@@ -269,7 +252,7 @@ async function fetchVoice() {
 async function fetchActivities() {
   activitiesLoading.value = true
   try {
-    const vars = { userId: userId.value, limit: 200, ...makeDateVars(actStartDate.value, actEndDate.value) }
+    const vars = { userId: userId.value, limit: 200, ...makeDateVars(periodStart.value, periodEnd.value) }
     const data = await gql(`
       query Activities($userId: String, $limit: Int, $startDate: String, $endDate: String) {
         activities(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate) {
@@ -294,7 +277,7 @@ async function fetchActivities() {
 async function fetchPresence() {
   presenceLoading.value = true
   try {
-    const vars = { userId: userId.value, limit: 200, ...makeDateVars(presStartDate.value, presEndDate.value) }
+    const vars = { userId: userId.value, limit: 200, ...makeDateVars(periodStart.value, periodEnd.value) }
     const data = await gql(`
       query Presence($userId: String, $limit: Int, $startDate: String, $endDate: String) {
         presenceStatus(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate) {
@@ -336,7 +319,7 @@ async function fetchUniqueActivities() {
 async function fetchStats() {
   statsLoading.value = true
   try {
-    const vars = { userId: userId.value, ...makeDateVars(statsStartDate.value, statsEndDate.value) }
+    const vars = { userId: userId.value, ...makeDateVars(periodStart.value, periodEnd.value) }
     const data = await gql(`
       query UserCharts($startDate: String, $endDate: String, $userId: String) {
         dailyStats(startDate: $startDate, endDate: $endDate, userId: $userId) { date messageCount voiceHours activityCount }
@@ -411,13 +394,13 @@ function chartOptions(title) {
 
 // Fix #7: re-render charts when switching back to statistics tab
 watch(activeTab, async (tab) => {
-  if (tab === 'messages' && !messages.value.length && !messagesLoading.value) fetchMessages()
-  if (tab === 'voice' && !voiceSessions.value.length && !voiceLoading.value) fetchVoice()
-  if (tab === 'activities' && !activitiesList.value.length && !activitiesLoading.value) fetchActivities()
-  if (tab === 'presence' && !presenceList.value.length && !presenceLoading.value) fetchPresence()
+  if (tab === 'messages' && !messagesLoading.value) fetchMessages()
+  if (tab === 'voice' && !voiceLoading.value) fetchVoice()
+  if (tab === 'activities' && !activitiesLoading.value) fetchActivities()
+  if (tab === 'presence' && !presenceLoading.value) fetchPresence()
   if (tab === 'statistics') {
-    if (!statsData.value && !statsLoading.value) {
-      fetchStats()
+    if (!statsLoading.value) {
+      await fetchStats()
     } else if (statsData.value) {
       await nextTick()
       renderCharts()
@@ -613,17 +596,17 @@ onMounted(() => {
       <div v-if="activeTab === 'statistics'">
         <div class="flex flex-wrap items-center gap-3 mb-6">
           <div class="flex items-center gap-2">
-            <input type="date" v-model="statsStartDate" @change="statsPreset = null; fetchStats()"
+            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="statsEndDate" @change="statsPreset = null; fetchStats()"
+            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div class="flex gap-1">
             <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
-              :key="p.l" @click="setStatsPreset(p.d)"
+              :key="p.l" @click="setPeriodPreset(p.d)"
               class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="statsPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
           </div>
         </div>
 
@@ -674,17 +657,17 @@ onMounted(() => {
       <div v-if="activeTab === 'messages'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
           <div class="flex items-center gap-2">
-            <input type="date" v-model="msgStartDate" @change="msgPreset = null; fetchMessages()"
+            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="msgEndDate" @change="msgPreset = null; fetchMessages()"
+            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div class="flex gap-1">
-            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:null,l:'All'}]"
-              :key="p.l" @click="setMsgPreset(p.d)"
+            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
+              :key="p.l" @click="setPeriodPreset(p.d)"
               class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="msgPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
           </div>
           <input
             v-model="msgChannel"
@@ -732,17 +715,17 @@ onMounted(() => {
       <div v-if="activeTab === 'voice'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
           <div class="flex items-center gap-2">
-            <input type="date" v-model="voiceStartDate" @change="voicePreset = null; fetchVoice()"
+            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="voiceEndDate" @change="voicePreset = null; fetchVoice()"
+            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div class="flex gap-1">
-            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:null,l:'All'}]"
-              :key="p.l" @click="setVoicePreset(p.d)"
+            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
+              :key="p.l" @click="setPeriodPreset(p.d)"
               class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="voicePreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
           </div>
           <input
             v-model="voiceChannel"
@@ -831,17 +814,17 @@ onMounted(() => {
       <div v-if="activeTab === 'activities'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
           <div class="flex items-center gap-2">
-            <input type="date" v-model="actStartDate" @change="actPreset = null; fetchActivities()"
+            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="actEndDate" @change="actPreset = null; fetchActivities()"
+            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div class="flex gap-1">
-            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:null,l:'All'}]"
-              :key="p.l" @click="setActPreset(p.d)"
+            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
+              :key="p.l" @click="setPeriodPreset(p.d)"
               class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="actPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
           </div>
 
           <div class="ml-auto flex items-center gap-2 text-sm text-gray-400">
@@ -890,17 +873,17 @@ onMounted(() => {
       <div v-if="activeTab === 'presence'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
           <div class="flex items-center gap-2">
-            <input type="date" v-model="presStartDate" @change="presPreset = null; fetchPresence()"
+            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="presEndDate" @change="presPreset = null; fetchPresence()"
+            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
               class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div class="flex gap-1">
-            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:null,l:'All'}]"
-              :key="p.l" @click="setPresPreset(p.d)"
+            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
+              :key="p.l" @click="setPeriodPreset(p.d)"
               class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="presPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
           </div>
 
           <div class="flex items-center gap-1.5 text-sm text-gray-400">
