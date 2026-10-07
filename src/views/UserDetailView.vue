@@ -759,7 +759,7 @@ watch(
             <tbody>
               <tr v-for="msg in messages" :key="msg.messageId" class="border-b border-gray-800/50">
                 <td class="px-4 py-2.5 font-mono text-xs text-gray-400">{{ msg.channelId }}</td>
-                <td class="px-4 py-2.5 capitalize">{{ msg.messageType.toLowerCase().replace('_', ' ') }}</td>
+                <td class="px-4 py-2.5 capitalize">{{ msg.messageType.toLowerCase().replaceAll('_', ' ') }}</td>
                 <td class="px-4 py-2.5 text-gray-400">{{ msg.characterCount ?? '—' }}</td>
                 <td class="px-4 py-2.5">
                   <span v-if="msg.hasAttachments" class="text-indigo-400 text-xs mr-1">Files</span>

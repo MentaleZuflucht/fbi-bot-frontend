@@ -241,11 +241,6 @@ function formatHours(h) {
   return `${h.toFixed(1)}h`
 }
 
-function formatVoice(hours) {
-  if (hours < 1) return `${Math.round(hours * 60)}m`
-  return `${hours}h`
-}
-
 const voiceStateLabels = {
   DEAF: 'Server deafened',
   MUTE: 'Server muted',
@@ -404,7 +399,7 @@ setPreset(30)
             <span class="text-gray-500 text-sm w-5 text-right shrink-0">{{ i + 1 }}</span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium truncate">{{ u.name }}</p>
-              <p class="text-xs text-gray-500">{{ u.messageCount.toLocaleString() }} msgs · {{ formatVoice(u.voiceHours) }} voice</p>
+              <p class="text-xs text-gray-500">{{ u.messageCount.toLocaleString() }} msgs · {{ formatHours(u.voiceHours) }} voice</p>
             </div>
             <div class="w-20 bg-gray-800 rounded-full h-2 shrink-0">
               <div class="bg-emerald-500 h-2 rounded-full" :style="{ width: (u.score / topUsers[0].score * 100) + '%' }"></div>
