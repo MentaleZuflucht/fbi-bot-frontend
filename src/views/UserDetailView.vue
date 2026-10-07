@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { gql } from '../lib/api'
+import { daysAgo } from '../lib/dates'
 import { Chart, registerables } from 'chart.js'
 
 Chart.register(...registerables)
@@ -24,13 +25,6 @@ const tabs = [
 ]
 
 // --- Shared date helpers ---
-function defaultDateRange(days) {
-  const end = new Date()
-  const start = new Date()
-  start.setDate(start.getDate() - days)
-  return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] }
-}
-
 function makeDateVars(start, end) {
   const vars = {}
   if (start) vars.startDate = start
@@ -39,8 +33,8 @@ function makeDateVars(start, end) {
 }
 
 // Shared date range for Messages, Statistics, Voice, Activities, Presence (stays in sync when switching tabs)
-const periodStart = ref(defaultDateRange(30).start)
-const periodEnd = ref(defaultDateRange(30).end)
+const periodStart = ref(daysAgo(30))
+const periodEnd = ref(daysAgo(0))
 /** number of days for preset buttons, or null for "All" / custom range */
 const periodPreset = ref(30)
 
@@ -50,9 +44,8 @@ function setPeriodPreset(days) {
     periodStart.value = ''
     periodEnd.value = ''
   } else {
-    const r = defaultDateRange(days)
-    periodStart.value = r.start
-    periodEnd.value = r.end
+    periodStart.value = daysAgo(days)
+    periodEnd.value = daysAgo(0)
   }
   refetchPeriodForActiveTab()
 }

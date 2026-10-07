@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { gql } from '../lib/api'
+import { daysAgo } from '../lib/dates'
 import { Chart, registerables } from 'chart.js'
 
 Chart.register(...registerables)
@@ -42,10 +43,8 @@ function setPreset(days) {
     startDate.value = ''
     endDate.value = ''
   } else {
-    const d = new Date()
-    endDate.value = d.toISOString().split('T')[0]
-    d.setDate(d.getDate() - days)
-    startDate.value = d.toISOString().split('T')[0]
+    startDate.value = daysAgo(days)
+    endDate.value = daysAgo(0)
   }
   fetchAll()
 }
