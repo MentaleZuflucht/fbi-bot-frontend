@@ -37,6 +37,13 @@ const periodStart = ref(daysAgo(30))
 const periodEnd = ref(daysAgo(0))
 /** number of days for preset buttons, or null for "All" / custom range */
 const periodPreset = ref(30)
+const periodPresets = [
+  { d: 7, l: '7d' },
+  { d: 30, l: '30d' },
+  { d: 90, l: '90d' },
+  { d: 365, l: '1y' },
+  { d: null, l: 'All' },
+]
 
 function setPeriodPreset(days) {
   periodPreset.value = days
@@ -549,6 +556,23 @@ watch(
         </div>
       </div>
 
+      <!-- Shared date range for all tabs except Overview and Statuses -->
+      <div v-if="activeTab !== 'overview' && activeTab !== 'statuses'" class="flex flex-wrap items-center gap-3 mb-4">
+        <div class="flex items-center gap-2">
+          <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <span class="text-gray-500 text-sm">to</span>
+          <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
+            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div class="flex gap-1">
+          <button v-for="p in periodPresets"
+            :key="p.l" @click="setPeriodPreset(p.d)"
+            class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+            :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
+        </div>
+      </div>
+
       <!-- Overview -->
       <div v-if="activeTab === 'overview'">
         <div v-if="user.stats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
@@ -664,22 +688,6 @@ watch(
 
       <!-- Statistics -->
       <div v-if="activeTab === 'statistics'">
-        <div class="flex flex-wrap items-center gap-3 mb-6">
-          <div class="flex items-center gap-2">
-            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          </div>
-          <div class="flex gap-1">
-            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
-              :key="p.l" @click="setPeriodPreset(p.d)"
-              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
-          </div>
-        </div>
-
         <div v-if="statsLoading" class="text-gray-500 py-8">Loading charts...</div>
         <template v-else-if="statsData">
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -726,19 +734,6 @@ watch(
       <!-- Messages -->
       <div v-if="activeTab === 'messages'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <div class="flex items-center gap-2">
-            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          </div>
-          <div class="flex gap-1">
-            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
-              :key="p.l" @click="setPeriodPreset(p.d)"
-              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
-          </div>
           <input
             v-model="msgChannel"
             @keyup.enter="fetchMessages"
@@ -784,19 +779,6 @@ watch(
       <!-- Voice -->
       <div v-if="activeTab === 'voice'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <div class="flex items-center gap-2">
-            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          </div>
-          <div class="flex gap-1">
-            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
-              :key="p.l" @click="setPeriodPreset(p.d)"
-              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
-          </div>
           <input
             v-model="voiceChannel"
             @keyup.enter="fetchVoice"
@@ -883,20 +865,6 @@ watch(
       <!-- Activities -->
       <div v-if="activeTab === 'activities'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <div class="flex items-center gap-2">
-            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          </div>
-          <div class="flex gap-1">
-            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
-              :key="p.l" @click="setPeriodPreset(p.d)"
-              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
-          </div>
-
           <div class="ml-auto flex items-center gap-2 text-sm text-gray-400">
             <span>Sort:</span>
             <button @click="actSortBy = 'date'" class="px-2 py-0.5 rounded text-xs"
@@ -942,20 +910,6 @@ watch(
       <!-- Presence -->
       <div v-if="activeTab === 'presence'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <div class="flex items-center gap-2">
-            <input type="date" v-model="periodStart" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <span class="text-gray-500 text-sm">to</span>
-            <input type="date" v-model="periodEnd" @change="onPeriodDateChange()"
-              class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          </div>
-          <div class="flex gap-1">
-            <button v-for="p in [{d:7,l:'7d'},{d:30,l:'30d'},{d:90,l:'90d'},{d:365,l:'1y'},{d:null,l:'All'}]"
-              :key="p.l" @click="setPeriodPreset(p.d)"
-              class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-              :class="periodPreset === p.d ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">{{ p.l }}</button>
-          </div>
-
           <div class="flex items-center gap-1.5 text-sm text-gray-400">
             <span class="text-gray-500">Status:</span>
             <button v-for="opt in presStatusOptions" :key="opt.value || 'all'"
