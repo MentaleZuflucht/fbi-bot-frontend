@@ -53,7 +53,9 @@ export async function gql(query, variables = {}) {
     throw new Error('Session expired')
   }
 
-  const json = await res.json()
+  // e.g. an HTML 502 page from nginx when the backend is down
+  const json = await res.json().catch(() => null)
+  if (!json) throw new Error(`Request failed (${res.status})`)
   if (json.errors) {
     const msg = json.errors[0].message
     if (msg.includes('Authentication required')) {
