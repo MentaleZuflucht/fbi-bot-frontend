@@ -1,7 +1,12 @@
 node_modules
 dist
 .git
+.github
+.vscode
 .env
-.env.local
+.env.*
 *.log
+*.md
+Dockerfile
+docker-compose.yml
 .DS_Store
