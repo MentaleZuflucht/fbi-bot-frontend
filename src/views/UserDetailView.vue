@@ -189,6 +189,7 @@ async function fetchUser() {
 
 async function fetchMessages() {
   messagesLoading.value = true
+  error.value = ''
   try {
     const vars = { userId: userId.value, limit: 100, ...makeDateVars(periodStart.value, periodEnd.value) }
     if (msgChannel.value.trim()) vars.channelId = msgChannel.value.trim()
@@ -216,6 +217,7 @@ async function fetchMessages() {
 async function fetchVoice() {
   voiceLoading.value = true
   expandedSession.value = null
+  error.value = ''
   try {
     const vars = { userId: userId.value, limit: 200, ...makeDateVars(periodStart.value, periodEnd.value) }
     if (voiceChannel.value.trim()) vars.channelId = voiceChannel.value.trim()
@@ -248,6 +250,7 @@ async function fetchVoice() {
 
 async function fetchActivities() {
   activitiesLoading.value = true
+  error.value = ''
   try {
     const vars = { userId: userId.value, limit: 200, ...makeDateVars(periodStart.value, periodEnd.value) }
     const data = await gql(`
@@ -273,6 +276,7 @@ async function fetchActivities() {
 
 async function fetchPresence() {
   presenceLoading.value = true
+  error.value = ''
   try {
     const vars = { userId: userId.value, limit: 200, ...makeDateVars(periodStart.value, periodEnd.value) }
     const data = await gql(`
@@ -345,6 +349,7 @@ function connectionOtherUser(conn) {
 
 async function fetchStats() {
   statsLoading.value = true
+  error.value = ''
   try {
     const vars = { userId: userId.value, ...makeDateVars(periodStart.value, periodEnd.value) }
     const data = await gql(`
@@ -514,11 +519,11 @@ watch(
       &larr; Back to Users
     </router-link>
 
+    <p v-if="error" class="text-red-400 mb-4">{{ error }}</p>
     <div v-if="loading" class="text-gray-500 py-8">Loading...</div>
-    <p v-else-if="error" class="text-red-400">{{ error }}</p>
-    <div v-else-if="!user" class="text-gray-500 py-8">User not found</div>
+    <div v-else-if="!user && !error" class="text-gray-500 py-8">User not found</div>
 
-    <template v-else>
+    <template v-else-if="user">
       <div class="mb-8">
         <h1 class="text-2xl font-bold">{{ displayName(user) }}</h1>
         <div class="flex gap-4 mt-2 text-sm text-gray-400">
