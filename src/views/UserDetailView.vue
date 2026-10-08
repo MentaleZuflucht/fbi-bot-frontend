@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { gql } from '../lib/api'
 import { daysAgo } from '../lib/dates'
 import { Chart, registerables } from 'chart.js'
+import Pagination from '../components/Pagination.vue'
 
 Chart.register(...registerables)
 
@@ -30,6 +31,14 @@ function makeDateVars(start, end) {
   if (start) vars.startDate = start
   if (end) vars.endDate = end
   return vars
+}
+
+// --- Paging for Messages, Voice, Activities, Presence ---
+const PAGE_SIZE = 50
+
+// Asks for one extra row to know whether there is a next page
+function pageVars(page) {
+  return { limit: PAGE_SIZE + 1, offset: page * PAGE_SIZE }
 }
 
 // Shared date range for Messages, Statistics, Voice, Activities, Presence (stays in sync when switching tabs)
@@ -89,11 +98,15 @@ fetchChannels()
 // --- Messages tab ---
 const messages = ref([])
 const messagesLoading = ref(false)
+const messagesPage = ref(0)
+const messagesHasNext = ref(false)
 
 // --- Voice tab ---
 const voiceChannel = ref('')
 const voiceSessions = ref([])
 const voiceLoading = ref(false)
+const voicePage = ref(0)
+const voiceHasNext = ref(false)
 const voiceSortBy = ref('date')
 const expandedSession = ref(null)
 const sessionStates = ref({})
@@ -118,6 +131,8 @@ let hourlyChartInstance = null
 // --- Activities tab ---
 const activitiesList = ref([])
 const activitiesLoading = ref(false)
+const activitiesPage = ref(0)
+const activitiesHasNext = ref(false)
 const actSortBy = ref('date')
 
 const sortedActivities = computed(() => {
@@ -131,8 +146,10 @@ const sortedActivities = computed(() => {
 // --- Presence tab ---
 const presenceList = ref([])
 const presenceLoading = ref(false)
+const presencePage = ref(0)
+const presenceHasNext = ref(false)
 const presSortBy = ref('date')
-/** '' = all; otherwise matches API statusType (ONLINE, IDLE, OFFLINE) */
+/** '' = all; otherwise the API's DiscordStatus (ONLINE, IDLE, OFFLINE) */
 const presStatusFilter = ref('')
 const presStatusOptions = [
   { value: '', label: 'All' },
@@ -141,11 +158,13 @@ const presStatusOptions = [
   { value: 'OFFLINE', label: 'Offline' },
 ]
 
+function setPresStatusFilter(value) {
+  presStatusFilter.value = value
+  fetchPresence()
+}
+
 const sortedPresence = computed(() => {
-  let list = [...presenceList.value]
-  if (presStatusFilter.value) {
-    list = list.filter((p) => p.statusType === presStatusFilter.value)
-  }
+  const list = [...presenceList.value]
   if (presSortBy.value === 'duration') {
     list.sort((a, b) => (b.durationMinutes ?? Infinity) - (a.durationMinutes ?? Infinity))
   }
@@ -209,14 +228,14 @@ async function fetchUser() {
   }
 }
 
-async function fetchMessages() {
+async function fetchMessages(page = 0) {
   messagesLoading.value = true
   error.value = ''
   try {
-    const vars = { userId: userId.value, limit: 100, ...makeDateVars(periodStart.value, periodEnd.value) }
+    const vars = { userId: userId.value, ...pageVars(page), ...makeDateVars(periodStart.value, periodEnd.value) }
     const data = await gql(`
-      query Messages($userId: String, $limit: Int, $startDate: String, $endDate: String) {
-        messages(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate) {
+      query Messages($userId: String, $limit: Int, $offset: Int, $startDate: String, $endDate: String) {
+        messages(userId: $userId, limit: $limit, offset: $offset, startDate: $startDate, endDate: $endDate) {
           messageId
           channelId
           channelName
@@ -228,7 +247,9 @@ async function fetchMessages() {
         }
       }
     `, vars)
-    messages.value = data.messages
+    messages.value = data.messages.slice(0, PAGE_SIZE)
+    messagesHasNext.value = data.messages.length > PAGE_SIZE
+    messagesPage.value = page
   } catch (e) {
     error.value = e.message
   } finally {
@@ -236,16 +257,16 @@ async function fetchMessages() {
   }
 }
 
-async function fetchVoice() {
+async function fetchVoice(page = 0) {
   voiceLoading.value = true
   expandedSession.value = null
   error.value = ''
   try {
-    const vars = { userId: userId.value, limit: 200, ...makeDateVars(periodStart.value, periodEnd.value) }
+    const vars = { userId: userId.value, ...pageVars(page), ...makeDateVars(periodStart.value, periodEnd.value) }
     if (voiceChannel.value.trim()) vars.channelId = voiceChannel.value.trim()
     const data = await gql(`
-      query VoiceSessions($userId: String, $limit: Int, $startDate: String, $endDate: String, $channelId: String) {
-        voiceSessions(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate, channelId: $channelId) {
+      query VoiceSessions($userId: String, $limit: Int, $offset: Int, $startDate: String, $endDate: String, $channelId: String) {
+        voiceSessions(userId: $userId, limit: $limit, offset: $offset, startDate: $startDate, endDate: $endDate, channelId: $channelId) {
           id
           channelId
           channelName
@@ -263,7 +284,9 @@ async function fetchVoice() {
         }
       }
     `, vars)
-    voiceSessions.value = data.voiceSessions
+    voiceSessions.value = data.voiceSessions.slice(0, PAGE_SIZE)
+    voiceHasNext.value = data.voiceSessions.length > PAGE_SIZE
+    voicePage.value = page
   } catch (e) {
     error.value = e.message
   } finally {
@@ -271,14 +294,14 @@ async function fetchVoice() {
   }
 }
 
-async function fetchActivities() {
+async function fetchActivities(page = 0) {
   activitiesLoading.value = true
   error.value = ''
   try {
-    const vars = { userId: userId.value, limit: 200, ...makeDateVars(periodStart.value, periodEnd.value) }
+    const vars = { userId: userId.value, ...pageVars(page), ...makeDateVars(periodStart.value, periodEnd.value) }
     const data = await gql(`
-      query Activities($userId: String, $limit: Int, $startDate: String, $endDate: String) {
-        activities(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate) {
+      query Activities($userId: String, $limit: Int, $offset: Int, $startDate: String, $endDate: String) {
+        activities(userId: $userId, limit: $limit, offset: $offset, startDate: $startDate, endDate: $endDate) {
           id
           activityType
           activityName
@@ -289,7 +312,9 @@ async function fetchActivities() {
         }
       }
     `, vars)
-    activitiesList.value = data.activities
+    activitiesList.value = data.activities.slice(0, PAGE_SIZE)
+    activitiesHasNext.value = data.activities.length > PAGE_SIZE
+    activitiesPage.value = page
   } catch (e) {
     error.value = e.message
   } finally {
@@ -297,14 +322,15 @@ async function fetchActivities() {
   }
 }
 
-async function fetchPresence() {
+async function fetchPresence(page = 0) {
   presenceLoading.value = true
   error.value = ''
   try {
-    const vars = { userId: userId.value, limit: 200, ...makeDateVars(periodStart.value, periodEnd.value) }
+    const vars = { userId: userId.value, ...pageVars(page), ...makeDateVars(periodStart.value, periodEnd.value) }
+    if (presStatusFilter.value) vars.statusType = presStatusFilter.value
     const data = await gql(`
-      query Presence($userId: String, $limit: Int, $startDate: String, $endDate: String) {
-        presenceStatus(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate) {
+      query Presence($userId: String, $limit: Int, $offset: Int, $startDate: String, $endDate: String, $statusType: DiscordStatus) {
+        presenceStatus(userId: $userId, limit: $limit, offset: $offset, startDate: $startDate, endDate: $endDate, statusType: $statusType) {
           id
           statusType
           setAt
@@ -314,7 +340,9 @@ async function fetchPresence() {
         }
       }
     `, vars)
-    presenceList.value = data.presenceStatus
+    presenceList.value = data.presenceStatus.slice(0, PAGE_SIZE)
+    presenceHasNext.value = data.presenceStatus.length > PAGE_SIZE
+    presencePage.value = page
   } catch (e) {
     error.value = e.message
   } finally {
@@ -796,12 +824,13 @@ watch(
             </tbody>
           </table>
         </div>
+        <Pagination v-if="!messagesLoading" :page="messagesPage" :has-next="messagesHasNext" @change="fetchMessages" />
       </div>
 
       <!-- Voice -->
       <div v-if="activeTab === 'voice'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <select v-model="voiceChannel" @change="fetchVoice" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <select v-model="voiceChannel" @change="fetchVoice()" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <option value="">All channels</option>
             <option v-for="c in voiceChannels" :key="c.channelId" :value="c.channelId">{{ c.name }}</option>
           </select>
@@ -878,6 +907,7 @@ watch(
             </tbody>
           </table>
         </div>
+        <Pagination v-if="!voiceLoading" :page="voicePage" :has-next="voiceHasNext" @change="fetchVoice" />
       </div>
 
       <!-- Activities -->
@@ -923,6 +953,7 @@ watch(
             </tbody>
           </table>
         </div>
+        <Pagination v-if="!activitiesLoading" :page="activitiesPage" :has-next="activitiesHasNext" @change="fetchActivities" />
       </div>
 
       <!-- Presence -->
@@ -932,7 +963,7 @@ watch(
             <span class="text-gray-500">Status:</span>
             <button v-for="opt in presStatusOptions" :key="opt.value || 'all'"
               type="button"
-              @click="presStatusFilter = opt.value"
+              @click="setPresStatusFilter(opt.value)"
               class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
               :class="presStatusFilter === opt.value ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'">
               {{ opt.label }}
@@ -970,15 +1001,13 @@ watch(
                   {{ ps.isCurrent ? 'Current' : formatDuration(ps.durationMinutes) }}
                 </td>
               </tr>
-              <tr v-if="presenceList.length && !sortedPresence.length">
-                <td colspan="4" class="px-4 py-6 text-center text-gray-500">No entries match the selected status</td>
-              </tr>
               <tr v-if="!presenceList.length">
                 <td colspan="4" class="px-4 py-6 text-center text-gray-500">No presence data</td>
               </tr>
             </tbody>
           </table>
         </div>
+        <Pagination v-if="!presenceLoading" :page="presencePage" :has-next="presenceHasNext" @change="fetchPresence" />
       </div>
 
       <!-- Custom Statuses -->
