@@ -71,6 +71,23 @@ function refetchPeriodForActiveTab() {
   else if (tab === 'statistics') fetchStats()
 }
 
+// --- Channel filters ---
+const channels = ref([])
+// Voice channels have a text chat too, so only categories can't have messages
+const messageChannels = computed(() => channels.value.filter(c => c.channelType !== 'category'))
+const voiceChannels = computed(() => channels.value.filter(c => ['voice', 'stage_voice'].includes(c.channelType)))
+
+async function fetchChannels() {
+  try {
+    const data = await gql(`query Channels { channels { channelId name channelType } }`)
+    channels.value = data.channels
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+fetchChannels()
+
 // --- Messages tab ---
 const msgChannel = ref('')
 const messages = ref([])
@@ -753,14 +770,10 @@ watch(
       <!-- Messages -->
       <div v-if="activeTab === 'messages'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <input
-            v-model="msgChannel"
-            @keyup.enter="fetchMessages"
-            type="text"
-            placeholder="Channel ID filter..."
-            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <button @click="fetchMessages" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm transition-colors">Apply</button>
+          <select v-model="msgChannel" @change="fetchMessages" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">All channels</option>
+            <option v-for="c in messageChannels" :key="c.channelId" :value="c.channelId">{{ c.name }}</option>
+          </select>
         </div>
 
         <div v-if="messagesLoading" class="text-gray-500 py-4">Loading...</div>
@@ -798,14 +811,10 @@ watch(
       <!-- Voice -->
       <div v-if="activeTab === 'voice'">
         <div class="flex flex-wrap items-center gap-3 mb-4">
-          <input
-            v-model="voiceChannel"
-            @keyup.enter="fetchVoice"
-            type="text"
-            placeholder="Channel ID filter..."
-            class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <button @click="fetchVoice" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm transition-colors">Apply</button>
+          <select v-model="voiceChannel" @change="fetchVoice" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="">All channels</option>
+            <option v-for="c in voiceChannels" :key="c.channelId" :value="c.channelId">{{ c.name }}</option>
+          </select>
 
           <div class="ml-auto flex items-center gap-2 text-sm text-gray-400">
             <span>Sort:</span>
