@@ -35,5 +35,5 @@ Set `API_URL` to the backend's `host:port` (see `docker-compose.yml`).
 - **`/login`** - Password login
 - **`/`** - Server statistics
 - **`/users`** - User list with search
-- **`/users/:userId`** - User details
+- **`/users/:userId`** - User details: overview, charts, and paged lists of messages, voice sessions, activities and presence
 - **`/connections`** - Voice dating: who spends the most time together in voice
