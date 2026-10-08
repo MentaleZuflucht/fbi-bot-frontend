@@ -19,6 +19,7 @@ const serverStats = ref(null)
 const dailyData = ref([])
 const hourlyData = ref([])
 const topChannels = ref([])
+const topTextChannels = ref([])
 const topActivities = ref([])
 const topUsers = ref([])
 const topVoiceStates = ref([])
@@ -80,6 +81,7 @@ async function fetchAll() {
         dailyStats(days: null, startDate: $startDate, endDate: $endDate) { date messageCount voiceHours activityCount activeUsers }
         hourlyMessageDistribution(startDate: $startDate, endDate: $endDate) { hour count }
         topChannels(startDate: $startDate, endDate: $endDate, limit: 10) { name count hours }
+        channelStats(startDate: $startDate, endDate: $endDate, limit: 10) { channelId channelName totalMessages }
         topActivities(startDate: $startDate, endDate: $endDate, limit: 10) { name count hours }
         topUsers(startDate: $startDate, endDate: $endDate, limit: 10) { userId name messageCount voiceHours score }
         topVoiceStateUsers(startDate: $startDate, endDate: $endDate, limit: 5) { stateType userId name hours }
@@ -90,6 +92,7 @@ async function fetchAll() {
     dailyData.value = data.dailyStats
     hourlyData.value = data.hourlyMessageDistribution
     topChannels.value = data.topChannels
+    topTextChannels.value = data.channelStats
     topActivities.value = data.topActivities
     topUsers.value = data.topUsers
     topVoiceStates.value = data.topVoiceStateUsers || []
@@ -223,7 +226,7 @@ function renderCharts() {
         maintainAspectRatio: false,
         plugins: {
           legend: { position: 'right', labels: { color: '#9ca3af', boxWidth: 12, padding: 8 } },
-          title: { display: true, text: 'Top Channels (Voice Hours)', color: '#e5e7eb', font: { size: 14 } },
+          title: { display: true, text: 'Top Voice Channels (Hours)', color: '#e5e7eb', font: { size: 14 } },
           tooltip: {
             callbacks: {
               label: ctx => `${ctx.label}: ${ctx.parsed.toFixed(1)}h`,
@@ -386,7 +389,7 @@ setPreset(30)
       </div>
 
       <!-- Top lists -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Top Users -->
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <h3 class="text-sm font-semibold text-gray-300 mb-4">Top Users</h3>
@@ -408,9 +411,9 @@ setPreset(30)
           </div>
         </div>
 
-        <!-- Top Channels (Voice Hours) -->
+        <!-- Top Voice Channels (Hours) -->
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 class="text-sm font-semibold text-gray-300 mb-4">Top Channels (Voice Hours)</h3>
+          <h3 class="text-sm font-semibold text-gray-300 mb-4">Top Voice Channels (Hours)</h3>
           <div v-if="!topChannels.length" class="text-gray-500 text-sm">No data</div>
           <div v-for="(ch, i) in topChannels" :key="ch.name" class="flex items-center gap-3 py-2">
             <span class="text-gray-500 text-sm w-5 text-right shrink-0">{{ i + 1 }}</span>
@@ -419,6 +422,20 @@ setPreset(30)
               <div class="bg-indigo-500 h-2 rounded-full" :style="{ width: (ch.hours / topChannels[0].hours * 100) + '%' }"></div>
             </div>
             <span class="text-xs text-gray-500 w-14 text-right shrink-0">{{ formatHours(ch.hours) }}</span>
+          </div>
+        </div>
+
+        <!-- Top Text Channels (Messages) -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <h3 class="text-sm font-semibold text-gray-300 mb-4">Top Text Channels (Messages)</h3>
+          <div v-if="!topTextChannels.length" class="text-gray-500 text-sm">No data</div>
+          <div v-for="(ch, i) in topTextChannels" :key="ch.channelId" class="flex items-center gap-3 py-2">
+            <span class="text-gray-500 text-sm w-5 text-right shrink-0">{{ i + 1 }}</span>
+            <span class="text-sm text-gray-400 truncate flex-1">{{ ch.channelName || ch.channelId }}</span>
+            <div class="w-20 bg-gray-800 rounded-full h-2 shrink-0">
+              <div class="bg-sky-500 h-2 rounded-full" :style="{ width: (ch.totalMessages / topTextChannels[0].totalMessages * 100) + '%' }"></div>
+            </div>
+            <span class="text-xs text-gray-500 w-14 text-right shrink-0">{{ ch.totalMessages.toLocaleString() }}</span>
           </div>
         </div>
 

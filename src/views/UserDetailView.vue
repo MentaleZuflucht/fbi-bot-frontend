@@ -368,6 +368,7 @@ async function fetchStats() {
         dailyStats(days: null, startDate: $startDate, endDate: $endDate, userId: $userId) { date messageCount voiceHours activityCount }
         hourlyMessageDistribution(startDate: $startDate, endDate: $endDate, userId: $userId) { hour count }
         topChannels(startDate: $startDate, endDate: $endDate, userId: $userId, limit: 8) { name count hours }
+        channelStats(startDate: $startDate, endDate: $endDate, userId: $userId, limit: 8) { channelId channelName totalMessages }
         topActivities(startDate: $startDate, endDate: $endDate, userId: $userId, limit: 8) { name count hours }
       }
     `, vars)
@@ -703,9 +704,9 @@ watch(
             </div>
           </div>
 
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-              <h3 class="text-sm font-semibold text-gray-300 mb-3">Top Channels (Voice Hours)</h3>
+              <h3 class="text-sm font-semibold text-gray-300 mb-3">Top Voice Channels (Hours)</h3>
               <div v-if="!statsData.topChannels.length" class="text-gray-500 text-sm">No data</div>
               <div v-for="ch in statsData.topChannels" :key="ch.name" class="flex items-center justify-between py-1.5">
                 <span class="text-sm text-gray-400 truncate mr-3">{{ ch.name }}</span>
@@ -714,6 +715,20 @@ watch(
                     <div class="bg-indigo-500 h-2 rounded-full" :style="{ width: statsData.topChannels[0].hours ? (ch.hours / statsData.topChannels[0].hours * 100) + '%' : '0%' }"></div>
                   </div>
                   <span class="text-sm text-gray-400 w-14 text-right">{{ formatHours(ch.hours) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <h3 class="text-sm font-semibold text-gray-300 mb-3">Top Text Channels (Messages)</h3>
+              <div v-if="!statsData.channelStats.length" class="text-gray-500 text-sm">No data</div>
+              <div v-for="ch in statsData.channelStats" :key="ch.channelId" class="flex items-center justify-between py-1.5">
+                <span class="text-sm text-gray-400 truncate mr-3">{{ ch.channelName || ch.channelId }}</span>
+                <div class="flex items-center gap-2 shrink-0">
+                  <div class="w-24 bg-gray-800 rounded-full h-2">
+                    <div class="bg-sky-500 h-2 rounded-full" :style="{ width: (ch.totalMessages / statsData.channelStats[0].totalMessages * 100) + '%' }"></div>
+                  </div>
+                  <span class="text-sm text-gray-400 w-14 text-right">{{ ch.totalMessages.toLocaleString() }}</span>
                 </div>
               </div>
             </div>
