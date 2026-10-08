@@ -155,7 +155,7 @@ const sortedPresence = computed(() => {
   return list
 })
 
-// --- Unique Activities ---
+// --- Top Activities ---
 const uniqueActivities = ref([])
 const uniqueActLoading = ref(false)
 
@@ -336,7 +336,8 @@ async function fetchUniqueActivities() {
         }
       }
     `, { userId: userId.value })
-    uniqueActivities.value = data.user?.uniqueActivities || []
+    // Already sorted by hours, so this keeps the top ones
+    uniqueActivities.value = (data.user?.uniqueActivities || []).slice(0, 10)
   } catch (e) {
     error.value = e.message
   } finally {
@@ -656,7 +657,7 @@ watch(
         <div v-else class="text-gray-500 text-sm mb-8">No pairings found</div>
 
         <!-- Unique Activities -->
-        <h2 class="text-lg font-semibold mb-3">All Activities</h2>
+        <h2 class="text-lg font-semibold mb-3">Top 10 Activities</h2>
         <div v-if="uniqueActLoading" class="text-gray-500 text-sm mb-6">Loading...</div>
         <div v-else-if="uniqueActivities.length" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mb-8">
           <table class="w-full text-sm">
