@@ -414,7 +414,7 @@ setPreset(30)
           <div v-if="!topChannels.length" class="text-gray-500 text-sm">No data</div>
           <div v-for="(ch, i) in topChannels" :key="ch.name" class="flex items-center gap-3 py-2">
             <span class="text-gray-500 text-sm w-5 text-right shrink-0">{{ i + 1 }}</span>
-            <span class="font-mono text-sm text-gray-400 truncate flex-1">{{ ch.name }}</span>
+            <span class="text-sm text-gray-400 truncate flex-1">{{ ch.name }}</span>
             <div class="w-20 bg-gray-800 rounded-full h-2 shrink-0">
               <div class="bg-indigo-500 h-2 rounded-full" :style="{ width: (ch.hours / topChannels[0].hours * 100) + '%' }"></div>
             </div>
