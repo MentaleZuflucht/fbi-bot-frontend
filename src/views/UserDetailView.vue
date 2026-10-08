@@ -71,10 +71,8 @@ function refetchPeriodForActiveTab() {
   else if (tab === 'statistics') fetchStats()
 }
 
-// --- Channel filters ---
+// --- Channel filter ---
 const channels = ref([])
-// Voice channels have a text chat too, so only categories can't have messages
-const messageChannels = computed(() => channels.value.filter(c => c.channelType !== 'category'))
 const voiceChannels = computed(() => channels.value.filter(c => ['voice', 'stage_voice'].includes(c.channelType)))
 
 async function fetchChannels() {
@@ -89,7 +87,6 @@ async function fetchChannels() {
 fetchChannels()
 
 // --- Messages tab ---
-const msgChannel = ref('')
 const messages = ref([])
 const messagesLoading = ref(false)
 
@@ -217,10 +214,9 @@ async function fetchMessages() {
   error.value = ''
   try {
     const vars = { userId: userId.value, limit: 100, ...makeDateVars(periodStart.value, periodEnd.value) }
-    if (msgChannel.value.trim()) vars.channelId = msgChannel.value.trim()
     const data = await gql(`
-      query Messages($userId: String, $limit: Int, $startDate: String, $endDate: String, $channelId: String) {
-        messages(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate, channelId: $channelId) {
+      query Messages($userId: String, $limit: Int, $startDate: String, $endDate: String) {
+        messages(userId: $userId, limit: $limit, startDate: $startDate, endDate: $endDate) {
           messageId
           channelId
           channelName
@@ -770,13 +766,6 @@ watch(
 
       <!-- Messages -->
       <div v-if="activeTab === 'messages'">
-        <div class="flex flex-wrap items-center gap-3 mb-4">
-          <select v-model="msgChannel" @change="fetchMessages" class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option value="">All channels</option>
-            <option v-for="c in messageChannels" :key="c.channelId" :value="c.channelId">{{ c.name }}</option>
-          </select>
-        </div>
-
         <div v-if="messagesLoading" class="text-gray-500 py-4">Loading...</div>
         <div v-else class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <table class="w-full text-sm">
