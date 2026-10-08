@@ -361,7 +361,8 @@ async function fetchStats() {
     const vars = { userId: userId.value, ...makeDateVars(periodStart.value, periodEnd.value) }
     const data = await gql(`
       query UserCharts($startDate: String, $endDate: String, $userId: String) {
-        dailyStats(startDate: $startDate, endDate: $endDate, userId: $userId) { date messageCount voiceHours activityCount }
+        # days: null overrides the API's 30 day default, so "All" really means all
+        dailyStats(days: null, startDate: $startDate, endDate: $endDate, userId: $userId) { date messageCount voiceHours activityCount }
         hourlyMessageDistribution(startDate: $startDate, endDate: $endDate, userId: $userId) { hour count }
         topChannels(startDate: $startDate, endDate: $endDate, userId: $userId, limit: 8) { name count hours }
         topActivities(startDate: $startDate, endDate: $endDate, userId: $userId, limit: 8) { name count hours }

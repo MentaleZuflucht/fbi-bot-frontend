@@ -76,7 +76,8 @@ async function fetchAll() {
           mostActiveChannelId
           mostCommonActivity
         }
-        dailyStats(startDate: $startDate, endDate: $endDate) { date messageCount voiceHours activityCount activeUsers }
+        # days: null overrides the API's 30 day default, so "All" really means all
+        dailyStats(days: null, startDate: $startDate, endDate: $endDate) { date messageCount voiceHours activityCount activeUsers }
         hourlyMessageDistribution(startDate: $startDate, endDate: $endDate) { hour count }
         topChannels(startDate: $startDate, endDate: $endDate, limit: 10) { name count hours }
         topActivities(startDate: $startDate, endDate: $endDate, limit: 10) { name count hours }
